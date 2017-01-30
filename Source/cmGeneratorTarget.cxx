@@ -46,8 +46,9 @@ const char* cmTargetPropertyComputer::GetSources<cmGeneratorTarget>(
 }
 
 template <>
-const char* cmTargetPropertyComputer::ComputeLocationForBuild<
-  cmGeneratorTarget>(cmGeneratorTarget const* tgt)
+const char*
+cmTargetPropertyComputer::ComputeLocationForBuild<cmGeneratorTarget>(
+  cmGeneratorTarget const* tgt)
 {
   return tgt->GetLocation("");
 }

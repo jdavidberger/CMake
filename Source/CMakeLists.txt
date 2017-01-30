@@ -188,6 +188,8 @@ set(SRCS
   cmCustomCommandGenerator.h
   cmDefinitions.cxx
   cmDefinitions.h
+  cmDebugger.cpp
+  cmDebugger.h
   cmDepends.cxx
   cmDepends.h
   cmDependsC.cxx
@@ -746,7 +748,7 @@ set(SRCS ${SRCS}
   cmNinjaUtilityTargetGenerator.h
   cmNinjaLinkLineComputer.cxx
   cmNinjaLinkLineComputer.h
-  )
+)
 
 # Temporary variable for tools targets
 set(_tools)
@@ -1002,6 +1004,17 @@ if(CMake_ENABLE_SERVER_MODE)
   set_property(SOURCE cmcmd.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_SERVER_MODE=1)
 
   target_link_libraries(cmake CMakeServerLib)
+endif()
+
+if(CMake_ENABLE_DEBUG_SERVER)
+  add_library(CMakeDebugServerLib
+    cmDebugServerSimple.cpp cmDebugServerSimple.h
+    )
+  target_link_libraries(CMakeDebugServerLib CMakeLib CMakeServerLib)
+  set_property(SOURCE cmake.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_DEBUG_SERVER=1)
+
+  target_link_libraries(CMakeLib CMakeDebugServerLib)
+  target_link_libraries(cmake CMakeDebugServerLib)
 endif()
 
 # Build CTest executable

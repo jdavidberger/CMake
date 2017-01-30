@@ -1,5 +1,6 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
+#define NOMINMAX
 #include "cmake.h"
 
 #include "cmAlgorithms.h"
@@ -24,6 +25,10 @@
 #include "cmUtils.hxx"
 #include "cmVersionConfig.h"
 #include "cm_auto_ptr.hxx"
+#if defined(HAVE_DEBUG_SERVER)
+#include "cmDebugServerSimple.h"
+#include "cmDebugger.h"
+#endif
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include <cm_jsoncpp_writer.h>
@@ -670,6 +675,18 @@ void cmake::SetArgs(const std::vector<std::string>& args,
       if (this->GraphVizFile.empty()) {
         cmSystemTools::Error("No file specified for --graphviz");
       }
+#if defined(HAVE_DEBUG_SERVER)
+    } else if (arg.find("--remote-debug=", 0) == 0) {
+      std::string connection = arg.substr(strlen("--remote-debug="));
+
+      this->DebugServer = std::make_shared<cmDebugServerSimple>();
+
+      this->DebugServer->StartServeThread();
+      if (this->GlobalGenerator) {
+        this->Debugger = cmDebugger::Create(*this->GlobalGenerator);
+        this->DebugServer->SetDebugger(this->Debugger);
+      }
+#endif
     } else if (arg.find("--debug-trycompile", 0) == 0) {
       std::cout << "debug trycompile on\n";
       this->DebugTryCompileOn();
@@ -1062,6 +1079,8 @@ void cmake::SetGlobalGenerator(cmGlobalGenerator* gg)
     cmSystemTools::Error("Error SetGlobalGenerator called with null");
     return;
   }
+
+  this->Debugger = nullptr;
   // delete the old generator
   if (this->GlobalGenerator) {
     delete this->GlobalGenerator;
@@ -1093,6 +1112,12 @@ void cmake::SetGlobalGenerator(cmGlobalGenerator* gg)
   if (!cmSystemTools::GetEnv("CC", this->CCEnvironment)) {
     this->CCEnvironment = "";
   }
+#if defined(HAVE_DEBUG_SERVER)
+  if (this->DebugServer) {
+    this->Debugger = cmDebugger::Create(*gg);
+    this->DebugServer->SetDebugger(this->Debugger);
+  }
+#endif
 }
 
 int cmake::DoPreConfigureChecks()
@@ -1303,6 +1328,12 @@ int cmake::ActualConfigure()
         cmExternalMakefileProjectGenerator::CreateFullGeneratorName(
           genName, extraGenName ? extraGenName : "");
       this->GlobalGenerator = this->CreateGlobalGenerator(fullName);
+#if defined(HAVE_DEBUG_SERVER)
+      if (this->DebugServer) {
+        this->Debugger = cmDebugger::Create(*GlobalGenerator);
+        this->DebugServer->SetDebugger(this->Debugger);
+      }
+#endif
     }
     if (this->GlobalGenerator) {
       // set the global flag for unix style paths on cmSystemTools as

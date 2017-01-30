@@ -33,8 +33,8 @@ static const char* cmDocumentationUsage[][2] = {
   { CM_NULLPTR, CM_NULLPTR }
 };
 
-static const char* cmDocumentationOptions[]
-                                         [2] = { { CM_NULLPTR, CM_NULLPTR } };
+static const char* cmDocumentationOptions[][2] = { { CM_NULLPTR,
+                                                     CM_NULLPTR } };
 
 #if defined(Q_OS_MAC)
 static int cmOSXInstall(std::string dir);

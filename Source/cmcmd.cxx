@@ -1006,7 +1006,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
         }
       }
 #if defined(HAVE_SERVER_MODE) && HAVE_SERVER_MODE
-      cmServerConnection* conn;
+      cmConnection* conn;
       if (isDebug) {
         conn = new cmServerStdIoConnection;
       } else {

@@ -8,59 +8,71 @@
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include "cm_uv.h"
 #endif
+#include <memory>
 
 class cmServer;
+class cmServerBase;
 class cmFileMonitor;
 class LoopGuard;
 
-class cmServerConnection
+class cmConnectionBufferStrategy
 {
 public:
-  cmServerConnection();
-  virtual ~cmServerConnection();
+  virtual ~cmConnectionBufferStrategy();
+  virtual std::string BufferMessage(std::string& rawBuffer) = 0;
+  virtual void clear();
+};
 
-  void SetServer(cmServer* s);
-
-  bool ProcessEvents(std::string* errorMessage);
-
-  void ReadData(const std::string& data);
-  void TriggerShutdown();
-  void WriteData(const std::string& data);
-  void ProcessNextRequest();
-
-  virtual void Connect(uv_stream_t* server) { (void)(server); }
-
-  cmFileMonitor* FileMonitor() const { return this->mFileMonitor; }
-
-protected:
-  virtual bool DoSetup(std::string* errorMessage) = 0;
-  virtual void TearDown() = 0;
-
-  void SendGreetings();
-
-  uv_loop_t* Loop() const { return mLoop; }
-
-protected:
-  std::string RawReadBuffer;
-  std::string RequestBuffer;
-
-  uv_stream_t* ReadStream = nullptr;
-  uv_stream_t* WriteStream = nullptr;
+class cmServerBufferStrategy : public cmConnectionBufferStrategy
+{
+public:
+  std::string BufferMessage(std::string& rawBuffer) override;
 
 private:
-  uv_loop_t* mLoop = nullptr;
-  cmFileMonitor* mFileMonitor = nullptr;
-  cmServer* Server = nullptr;
+  std::string RequestBuffer;
+};
+
+class cmConnection
+{
   uv_signal_t* SIGINTHandler = nullptr;
   uv_signal_t* SIGHUPHandler = nullptr;
 
-  friend class LoopGuard;
+public:
+  virtual ~cmConnection();
+  cmConnection(cmConnectionBufferStrategy* bufferStrategy = 0);
+  virtual void Connect(uv_stream_t* server);
+
+  virtual bool ProcessEvents(std::string* errorMessage);
+
+  virtual void ReadData(const std::string& data);
+
+  virtual void TriggerShutdown();
+  virtual void OnSignal(int signum);
+
+  virtual void WriteData(const std::string& data);
+
+  virtual void ProcessNextRequest();
+  virtual void SetServer(cmServerBase* s);
+
+protected:
+  virtual bool DoSetup(std::string* errorMessage) = 0;
+
+  virtual void TearDown() = 0;
+
+  std::shared_ptr<uv_loop_t> Loop() const { return mLoop.lock(); }
+  std::weak_ptr<uv_loop_t> mLoop;
+  std::string RawReadBuffer;
+
+  uv_stream_t* ReadStream = nullptr;
+  uv_stream_t* WriteStream = nullptr;
+  std::unique_ptr<cmConnectionBufferStrategy> BufferStrategy;
+  cmServerBase* Server = 0;
 };
 
-class cmServerStdIoConnection : public cmServerConnection
+class cmStdIoConnection : public virtual cmConnection
 {
 public:
-  cmServerStdIoConnection();
+  cmStdIoConnection(cmConnectionBufferStrategy* bufferStrategy = 0);
   bool DoSetup(std::string* errorMessage) override;
 
   void TearDown() override;
@@ -78,10 +90,27 @@ private:
   InOutUnion Output;
 };
 
-class cmServerPipeConnection : public cmServerConnection
+class cmTcpIpConnection : public virtual cmConnection
 {
 public:
-  cmServerPipeConnection(const std::string& name);
+  cmTcpIpConnection(int Port);
+  bool DoSetup(std::string* errorMessage) override;
+
+  void TearDown() override;
+
+  void Connect(uv_stream_t* server) override;
+
+private:
+  int Port;
+  uv_tcp_t ServerHandle;
+  uv_tcp_t* ClientHandle = 0;
+};
+
+class cmPipeConnection : public virtual cmConnection
+{
+public:
+  cmPipeConnection(const std::string& name,
+                   cmConnectionBufferStrategy* bufferStrategy = 0);
   bool DoSetup(std::string* errorMessage) override;
 
   void TearDown() override;
@@ -92,4 +121,16 @@ private:
   const std::string PipeName;
   uv_pipe_t* ServerPipe = nullptr;
   uv_pipe_t* ClientPipe = nullptr;
+};
+
+class cmServerStdIoConnection : public cmStdIoConnection
+{
+public:
+  cmServerStdIoConnection();
+};
+
+class cmServerPipeConnection : public cmPipeConnection
+{
+public:
+  cmServerPipeConnection(const std::string& name);
 };

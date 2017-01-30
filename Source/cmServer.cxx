@@ -1,7 +1,10 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmServer.h"
+#include <iomanip>
+#include <sstream>
 
+#include "cmFileMonitor.h"
 #include "cmServerConnection.h"
 #include "cmServerDictionary.h"
 #include "cmServerProtocol.h"
@@ -33,11 +36,10 @@ public:
   uint64_t StartTime;
 };
 
-cmServer::cmServer(cmServerConnection* conn, bool supportExperimental)
-  : Connection(conn)
+cmServer::cmServer(cmConnection* conn, bool supportExperimental)
+  : cmServerBase(conn)
   , SupportExperimental(supportExperimental)
 {
-  this->Connection->SetServer(this);
   // Register supported protocols:
   this->RegisterProtocol(new cmServerProtocol1_0);
 }
@@ -51,21 +53,11 @@ cmServer::~cmServer()
   for (cmServerProtocol* p : this->SupportedProtocols) {
     delete p;
   }
-
-  delete this->Connection;
 }
-
-void cmServer::PopOne()
+void cmServer::ProcessRequest(const std::string& input)
 {
-  if (this->Queue.empty()) {
-    return;
-  }
-
   Json::Reader reader;
   Json::Value value;
-  const std::string input = this->Queue.front();
-  this->Queue.erase(this->Queue.begin());
-
   if (!reader.parse(input, value)) {
     this->WriteParseError("Failed to parse JSON input.");
     return;
@@ -142,7 +134,7 @@ void cmServer::PrintHello() const
 
 void cmServer::QueueRequest(const std::string& request)
 {
-  this->Queue.push_back(request);
+  cmServerBase::QueueRequest(request);
   this->PopOne();
 }
 
@@ -240,7 +232,7 @@ bool cmServer::Serve(std::string* errorMessage)
 
 cmFileMonitor* cmServer::FileMonitor() const
 {
-  return Connection->FileMonitor();
+  return fileMonitor.get();
 }
 
 void cmServer::WriteJsonObject(const Json::Value& jsonValue,
@@ -377,4 +369,107 @@ void cmServer::WriteResponse(const cmServerResponse& response,
   }
 
   this->WriteJsonObject(obj, debug);
+}
+
+void cmServer::OnNewConnection()
+{
+  PrintHello();
+}
+
+void cmServer::OnEventsStart(uv_loop_t* loop)
+{
+  cmServerBase::OnEventsStart(loop);
+  fileMonitor = std::make_shared<cmFileMonitor>(loop);
+}
+
+void cmServer::OnEventsStop(std::string* pString)
+{
+  cmServerBase::OnEventsStop(pString);
+  if (fileMonitor) {
+    fileMonitor->StopMonitoring();
+    fileMonitor.reset();
+  }
+}
+
+void cmServerBase::QueueRequest(const std::string& request)
+{
+  this->Queue.push_back(request);
+}
+
+bool cmServerBase::StartServeThread()
+{
+  ServeThread = std::thread([&] {
+    std::string error;
+    Serve(&error);
+  });
+  return true;
+}
+
+cmServerBase::~cmServerBase()
+{
+  uv_close(reinterpret_cast<uv_handle_t*>(&cbHandle), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(&cbPrepareHandle), nullptr);
+  Connection->TriggerShutdown();
+  ServeThread.join();
+}
+
+bool cmServerBase::Serve(std::string* errorMessage)
+{
+  return GetConnection()->ProcessEvents(errorMessage);
+}
+
+void cmServerBase::OnNewConnection()
+{
+}
+
+void cmServerBase::OnDisconnect()
+{
+}
+template <typename T>
+static void onLoop(T* handle)
+{
+  auto serverBase = reinterpret_cast<cmServerBase*>(handle->data);
+  serverBase->PopOne();
+}
+void cmServerBase::OnEventsStart(uv_loop_t* loop)
+{
+  uv_check_init(loop, &cbHandle);
+  cbHandle.data = this;
+  uv_check_start(&cbHandle, &onLoop);
+
+  uv_prepare_init(loop, &cbPrepareHandle);
+  cbPrepareHandle.data = this;
+  uv_prepare_start(&cbPrepareHandle, &onLoop);
+}
+
+void cmServerBase::OnEventsStop(std::string* pString)
+{
+  uv_check_stop(&cbHandle);
+}
+
+bool cmServerBase::OnSignal(int signum)
+{
+  return false;
+}
+
+cmConnection* cmServerBase::GetConnection()
+{
+  return Connection.get();
+}
+
+cmServerBase::cmServerBase(cmConnection* connection)
+  : Connection(connection)
+{
+  Connection->SetServer(this);
+}
+
+void cmServerBase::PopOne()
+{
+  if (this->Queue.empty()) {
+    return;
+  }
+
+  const std::string input = this->Queue.front();
+  this->Queue.erase(this->Queue.begin());
+  ProcessRequest(input);
 }

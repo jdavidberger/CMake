@@ -37,9 +37,10 @@ static const char* cmDocumentationUsageNote[][2] = {
   { CM_NULLPTR, CM_NULLPTR }
 };
 
-static const char* cmDocumentationOptions[]
-                                         [2] = { CMAKE_STANDARD_OPTIONS_TABLE,
-                                                 { CM_NULLPTR, CM_NULLPTR } };
+static const char* cmDocumentationOptions[][2] = {
+  CMAKE_STANDARD_OPTIONS_TABLE,
+  { CM_NULLPTR, CM_NULLPTR }
+};
 
 cmCursesForm* cmCursesForm::CurrentForm = CM_NULLPTR;
 
