@@ -29,7 +29,6 @@ class cmMessenger;
 class cmState;
 class cmVariableWatch;
 class cmDebugger;
-class cmDebugServer;
 struct cmDocumentationEntry;
 
 /** \brief Represents a cmake invocation.
@@ -336,10 +335,7 @@ public:
   void SetWarnUnusedCli(bool b) { this->WarnUnusedCli = b; }
   bool GetCheckSystemVars() { return this->CheckSystemVars; }
   void SetCheckSystemVars(bool b) { this->CheckSystemVars = b; }
-#if defined(HAVE_DEBUG_SERVER)
-  std::shared_ptr<cmDebugServer> GetDebugServer() { return this->DebugServer; }
-#endif
-  std::shared_ptr<cmDebugger> GetDebugger() { return this->Debugger; }
+  cmDebugger* GetDebugger() { return this->Debugger; }
   void MarkCliAsUsed(const std::string& variable);
 
   /** Get the list of configurations (in upper case) considered to be
@@ -501,12 +497,7 @@ private:
 
   std::vector<std::string> TraceOnlyThisSources;
 
-  std::shared_ptr<cmDebugger> Debugger;
-#if defined(HAVE_DEBUG_SERVER)
-  std::shared_ptr<cmDebugServer> DebugServer;
-#else
-  std::shared_ptr<void> DebugServerPlaceholder;
-#endif
+  cmDebugger* Debugger;
 
   void UpdateConversionPathTable();
 

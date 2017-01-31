@@ -6,20 +6,17 @@
 #include "cmListFileCache.h"
 #include <memory>
 
-class cmGlobalGenerator;
+class cmake;
 class cmDebugger;
 
 class cmDebugerListener
 {
 protected:
-  std::weak_ptr<cmDebugger> Debugger;
+  cmDebugger& Debugger;
 
 public:
-  virtual void SetDebugger(const std::shared_ptr<cmDebugger>& debugger);
-  cmDebugerListener(const std::weak_ptr<cmDebugger>& debugger);
-  cmDebugerListener();
+  cmDebugerListener(cmDebugger& debugger);
   virtual ~cmDebugerListener() {}
-
   virtual void OnChangeState() {}
   virtual void OnUserMessage(const std::string& msg) { (void)msg; }
 };
@@ -53,7 +50,7 @@ public:
   virtual cmListFileBacktrace GetBacktrace() const = 0;
   virtual cmMakefile* GetMakefile() const = 0;
 
-  static std::unique_ptr<cmDebugger> Create(cmGlobalGenerator& global);
+  static cmDebugger* Create(cmake& global);
   virtual ~cmDebugger() {}
 
   virtual void PreRunHook(const cmListFileContext& context,
@@ -74,8 +71,8 @@ public:
   virtual std::string Print(const std::string& expr) = 0;
   virtual std::string PrintBacktrace() = 0;
 
-  virtual void AddListener(cmDebugerListener& listener) = 0;
-  virtual void RemoveListener(cmDebugerListener& listener) = 0;
+  virtual void AddListener(cmDebugerListener* listener) = 0;
+  virtual void RemoveListener(cmDebugerListener* listener) = 0;
 };
 
 #endif // CMAKE_CMREMOTEDEBUGGER_H

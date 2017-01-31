@@ -188,7 +188,7 @@ set(SRCS
   cmCustomCommandGenerator.h
   cmDefinitions.cxx
   cmDefinitions.h
-  cmDebugger.cpp
+  cmDebugger.cxx
   cmDebugger.h
   cmDepends.cxx
   cmDepends.h
@@ -1008,7 +1008,7 @@ endif()
 
 if(CMake_ENABLE_DEBUG_SERVER)
   add_library(CMakeDebugServerLib
-    cmDebugServerSimple.cpp cmDebugServerSimple.h
+    cmDebugServerConsole.cxx cmDebugServerConsole.h
     )
   target_link_libraries(CMakeDebugServerLib CMakeLib CMakeServerLib)
   set_property(SOURCE cmake.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_DEBUG_SERVER=1)

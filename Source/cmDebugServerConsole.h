@@ -9,16 +9,15 @@
 class cmDebugServer : public cmServerBase, public cmDebugerListener
 {
 public:
-  cmDebugServer(cmConnection* conn);
+  cmDebugServer(cmDebugger& debugger, cmConnection* conn);
   virtual bool OnSignal(int signum) override;
 };
 
-class cmDebugServerSimple : public cmDebugServer
+class cmDebugServerConsole : public cmDebugServer
 {
 public:
-  cmDebugServerSimple();
-
-  cmDebugServerSimple(cmConnection* conn);
+  cmDebugServerConsole(cmDebugger& debugger);
+  cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn);
   void printPrompt();
   virtual void ProcessRequest(const std::string& request) override;
 

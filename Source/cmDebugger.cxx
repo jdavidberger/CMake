@@ -5,12 +5,13 @@
 #include "cmDebugger.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
+#include "cmake.h"
 #include <condition_variable>
 #include <set>
 
 class cmRemoteDebugger_impl : public cmDebugger
 {
-  cmGlobalGenerator& global;
+  cmake& CMakeInstance;
   State::t state = State::Unknown;
   std::mutex m;
   std::condition_variable cv;
@@ -18,19 +19,26 @@ class cmRemoteDebugger_impl : public cmDebugger
   std::vector<cmBreakpoint> breakpoints;
 
 public:
-  cmRemoteDebugger_impl(cmGlobalGenerator& global)
-    : global(global)
+  ~cmRemoteDebugger_impl()
+  {
+    for (auto& s : listeners) {
+      delete s;
+    }
+    listeners.clear();
+  }
+  cmRemoteDebugger_impl(cmake& cmakeInstance)
+    : CMakeInstance(cmakeInstance)
   {
   }
   std::set<cmDebugerListener*> listeners;
-  void AddListener(cmDebugerListener& listener) override
+  void AddListener(cmDebugerListener* listener) override
   {
-    listeners.insert(&listener);
+    listeners.insert(listener);
   }
 
-  void RemoveListener(cmDebugerListener& listener) override
+  void RemoveListener(cmDebugerListener* listener) override
   {
-    listeners.erase(&listener);
+    listeners.erase(listener);
   }
   virtual const std::vector<cmBreakpoint>& GetBreakpoints() const
   {
@@ -57,11 +65,19 @@ public:
   }
   virtual cmListFileBacktrace GetBacktrace() const override
   {
-    return global.GetCurrentMakefile()->GetBacktrace();
+    if (this->CMakeInstance.GetGlobalGenerator())
+      return this->CMakeInstance.GetGlobalGenerator()
+        ->GetCurrentMakefile()
+        ->GetBacktrace();
+
+    cmListFileBacktrace empty;
+    return empty;
   }
   virtual cmMakefile* GetMakefile() const
   {
-    return global.GetCurrentMakefile();
+    if (this->CMakeInstance.GetGlobalGenerator())
+      return this->CMakeInstance.GetGlobalGenerator()->GetCurrentMakefile();
+    return 0;
   }
   void PreRunHook(const cmListFileContext& context,
                   const cmListFileFunction& line) override
@@ -125,28 +141,16 @@ public:
   State::t CurrentState() const override { return this->state; }
 };
 
-std::unique_ptr<cmDebugger> cmDebugger::Create(cmGlobalGenerator& global)
+cmDebugger* cmDebugger::Create(cmake& global)
 {
-  return std::unique_ptr<cmDebugger>(new cmRemoteDebugger_impl(global));
+  return new cmRemoteDebugger_impl(global);
 }
 
-cmDebugerListener::cmDebugerListener(const std::weak_ptr<cmDebugger>& debugger)
+cmDebugerListener::cmDebugerListener(cmDebugger& debugger)
   : Debugger(debugger)
 {
-  if (auto dbg = debugger.lock())
-    dbg->AddListener(*this);
 }
 
-cmDebugerListener::cmDebugerListener()
-{
-}
-
-void cmDebugerListener::SetDebugger(
-  const std::shared_ptr<cmDebugger>& debugger)
-{
-  this->Debugger = debugger;
-  debugger->AddListener(*this);
-}
 cmBreakpoint::cmBreakpoint(const std::string& file, size_t line)
   : file(file)
   , line(line)

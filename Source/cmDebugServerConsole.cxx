@@ -2,13 +2,14 @@
 // Created by J on 1/29/2017.
 //
 
-#include "cmDebugServerSimple.h"
+#include "cmDebugServerConsole.h"
 #include "cmMakefile.h"
 #include "cmServerConnection.h"
 #include <sstream>
 
-cmDebugServerSimple::cmDebugServerSimple(cmConnection* conn)
-  : cmDebugServer(conn)
+cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger,
+                                           cmConnection* conn)
+  : cmDebugServer(debugger, conn)
 {
 }
 
@@ -32,32 +33,28 @@ public:
     return line;
   }
 };
-cmDebugServerSimple::cmDebugServerSimple()
-  : cmDebugServerSimple(new cmStdIoConnection(new cmLineBufferStrategy()))
+cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger)
+  : cmDebugServerConsole(debugger,
+                         new cmStdIoConnection(new cmLineBufferStrategy()))
 {
 }
 
-void cmDebugServerSimple::ProcessRequest(const std::string& request)
+void cmDebugServerConsole::ProcessRequest(const std::string& request)
 {
-  auto debugger = this->Debugger.lock();
-  if (!debugger) {
-    this->Connection->WriteData("Debugger isn't currently connected.\n");
-    return;
-  }
   if (request == "c") {
-    debugger->Continue();
+    Debugger.Continue();
   } else if (request == "b") {
-    debugger->Break();
+    Debugger.Break();
   } else if (request == "s") {
-    debugger->Step();
+    Debugger.Step();
   } else if (request == "bt") {
-    auto bt = debugger->GetBacktrace();
+    auto bt = Debugger.GetBacktrace();
     std::stringstream ss;
     bt.PrintCallStack(ss);
     Connection->WriteData(ss.str());
   } else if (request.find("print ") == 0) {
     auto whatToPrint = request.substr(strlen("print "));
-    auto val = debugger->GetMakefile()->GetDefinition(whatToPrint);
+    auto val = Debugger.GetMakefile()->GetDefinition(whatToPrint);
     if (val)
       Connection->WriteData("$ " + whatToPrint + " = " + std::string(val) +
                             "\n");
@@ -65,7 +62,7 @@ void cmDebugServerSimple::ProcessRequest(const std::string& request)
       Connection->WriteData(whatToPrint + " isn't set.\n");
   } else if (request.find("info br") == 0) {
     std::stringstream ss;
-    auto& bps = debugger->GetBreakpoints();
+    auto& bps = Debugger.GetBreakpoints();
     for (unsigned i = 0; i < bps.size(); i++) {
       if (bps[i]) {
         ss << i << " break at " << bps[i].file << ":" << bps[i].line
@@ -76,53 +73,49 @@ void cmDebugServerSimple::ProcessRequest(const std::string& request)
   } else if (request.find("clear") == 0) {
     auto space = request.find(' ');
     if (space == std::string::npos) {
-      auto& bps = debugger->GetBreakpoints();
+      auto& bps = Debugger.GetBreakpoints();
       for (unsigned i = 0; i < bps.size(); i++) {
-        debugger->ClearBreakpoint(i);
+        Debugger.ClearBreakpoint(i);
       }
       Connection->WriteData("Cleared all breakpoints\n");
     } else {
       auto clearWhat = stoi(request.substr(space));
-      debugger->ClearBreakpoint(clearWhat);
+      Debugger.ClearBreakpoint(clearWhat);
       Connection->WriteData("Cleared breakpoint " + std::to_string(clearWhat) +
                             "\n");
     }
-  } else if (request.find("br ") == 0) {
-    auto bpSpecifier = request.substr(strlen("br "));
-    auto colonPlacement = bpSpecifier.find_last_of(':');
-    size_t line = (size_t)-1;
+  } else if (request.find("br") == 0) {
+    auto space = request.find(' ');
+    if (space != std::string::npos) {
+      auto bpSpecifier = request.substr(space + 1);
+      auto colonPlacement = bpSpecifier.find_last_of(':');
+      size_t line = (size_t)-1;
 
-    if (colonPlacement != std::string::npos) {
-      line = std::stoi(bpSpecifier.substr(colonPlacement + 1));
-      bpSpecifier = bpSpecifier.substr(0, colonPlacement);
-    } else if (isdigit(*bpSpecifier.c_str())) {
-      line = std::stoi(bpSpecifier);
-      bpSpecifier = debugger->CurrentLine().FilePath;
+      if (colonPlacement != std::string::npos) {
+        line = std::stoi(bpSpecifier.substr(colonPlacement + 1));
+        bpSpecifier = bpSpecifier.substr(0, colonPlacement);
+      } else if (isdigit(*bpSpecifier.c_str())) {
+        line = std::stoi(bpSpecifier);
+        bpSpecifier = Debugger.CurrentLine().FilePath;
+      }
+
+      Debugger.SetBreakpoint(bpSpecifier, line);
+      Connection->WriteData("Break at " + bpSpecifier + ":" +
+                            std::to_string(line) + "\n");
     }
-
-    debugger->SetBreakpoint(bpSpecifier, line);
-    Connection->WriteData("Break at " + bpSpecifier + ":" +
-                          std::to_string(line) + "\n");
   }
   printPrompt();
 }
-void cmDebugServerSimple::printPrompt()
+void cmDebugServerConsole::printPrompt()
 {
-  auto debugger = Debugger.lock();
-  if (!debugger)
-    return;
-
   Connection->WriteData("(debugger) > ");
 }
-void cmDebugServerSimple::OnChangeState()
+void cmDebugServerConsole::OnChangeState()
 {
   cmDebugerListener::OnChangeState();
 
-  auto debugger = Debugger.lock();
-  if (!debugger)
-    return;
-  auto currentLine = debugger->CurrentLine();
-  switch (debugger->CurrentState()) {
+  auto currentLine = Debugger.CurrentLine();
+  switch (Debugger.CurrentState()) {
     case cmDebugger::State::Running:
       Connection->WriteData("Running...\n");
       break;
@@ -141,16 +134,16 @@ void cmDebugServerSimple::OnChangeState()
   }
 }
 
-cmDebugServer::cmDebugServer(cmConnection* conn)
+cmDebugServer::cmDebugServer(cmDebugger& debugger, cmConnection* conn)
   : cmServerBase(conn)
+  , cmDebugerListener(debugger)
 {
 }
 
 bool cmDebugServer::OnSignal(int signum)
 {
   if (signum == 2) {
-    if (auto debugger = Debugger.lock())
-      debugger->Break();
+    Debugger.Break();
     return true;
   }
   return false;
