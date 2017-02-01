@@ -6,7 +6,7 @@
 #include "cmServerConnection.h"
 #include <memory>
 
-class cmDebugServer : public cmServerBase, public cmDebugerListener
+class cmDebugServer : public cmServerBase, public cmDebuggerListener
 {
 public:
   cmDebugServer(cmDebugger& debugger, cmConnection* conn);

@@ -112,7 +112,7 @@ void cmDebugServerConsole::printPrompt()
 }
 void cmDebugServerConsole::OnChangeState()
 {
-  cmDebugerListener::OnChangeState();
+  cmDebuggerListener::OnChangeState();
 
   auto currentLine = Debugger.CurrentLine();
   switch (Debugger.CurrentState()) {
@@ -136,7 +136,7 @@ void cmDebugServerConsole::OnChangeState()
 
 cmDebugServer::cmDebugServer(cmDebugger& debugger, cmConnection* conn)
   : cmServerBase(conn)
-  , cmDebugerListener(debugger)
+  , cmDebuggerListener(debugger)
 {
 }
 

@@ -49,6 +49,7 @@ public:
   virtual void TriggerShutdown();
   virtual void OnSignal(int signum);
 
+  virtual bool IsOpen() const;
   virtual void WriteData(const std::string& data);
 
   virtual void ProcessNextRequest();
@@ -94,6 +95,8 @@ class cmTcpIpConnection : public virtual cmConnection
 {
 public:
   cmTcpIpConnection(int Port);
+  cmTcpIpConnection(int Port, cmConnectionBufferStrategy* bufferStrategy);
+
   bool DoSetup(std::string* errorMessage) override;
 
   void TearDown() override;

@@ -30,13 +30,13 @@ public:
     : CMakeInstance(cmakeInstance)
   {
   }
-  std::set<cmDebugerListener*> listeners;
-  void AddListener(cmDebugerListener* listener) override
+  std::set<cmDebuggerListener*> listeners;
+  void AddListener(cmDebuggerListener* listener) override
   {
     listeners.insert(listener);
   }
 
-  void RemoveListener(cmDebugerListener* listener) override
+  void RemoveListener(cmDebuggerListener* listener) override
   {
     listeners.erase(listener);
   }
@@ -146,7 +146,7 @@ cmDebugger* cmDebugger::Create(cmake& global)
   return new cmRemoteDebugger_impl(global);
 }
 
-cmDebugerListener::cmDebugerListener(cmDebugger& debugger)
+cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
   : Debugger(debugger)
 {
 }

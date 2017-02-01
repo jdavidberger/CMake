@@ -292,6 +292,11 @@ void cmConnection::OnSignal(int signum)
   }
 }
 
+bool cmConnection::IsOpen() const
+{
+  return this->WriteStream != 0;
+}
+
 void cmConnection::WriteData(const std::string& data)
 {
   assert(this->WriteStream);
@@ -304,7 +309,9 @@ void cmConnection::WriteData(const std::string& data)
   memcpy(req->buf.base, data.c_str(), ds);
 
   uv_write(reinterpret_cast<uv_write_t*>(req),
-           static_cast<uv_stream_t*>(this->WriteStream), &req->buf, 1,
+           static_cast<uv_stream_t*>(this->WriteStream),
+           &req->buf,
+           1,
            on_write);
 }
 
@@ -373,6 +380,7 @@ void cmTcpIpConnection::Connect(uv_stream_t* server)
   this->WriteStream = client;
 
   uv_read_start(this->ReadStream, on_alloc_buffer, on_read);
+  this->Server->OnNewConnection();
 }
 
 void cmTcpIpConnection::TearDown()
@@ -393,7 +401,7 @@ void cmTcpIpConnection::TearDown()
 bool cmTcpIpConnection::DoSetup(std::string* errorMessage)
 {
   uv_tcp_init(this->Loop().get(), &this->ServerHandle);
-  this->ServerHandle.data = this;
+  this->ServerHandle.data = static_cast<cmConnection*>(this);
 
   struct sockaddr_in recv_addr;
   uv_ip4_addr("0.0.0.0", Port, &recv_addr);
@@ -417,6 +425,14 @@ bool cmTcpIpConnection::DoSetup(std::string* errorMessage)
 
 cmTcpIpConnection::cmTcpIpConnection(int Port)
   : Port(Port)
+{
+}
+
+cmTcpIpConnection::cmTcpIpConnection(
+  int Port,
+  cmConnectionBufferStrategy* bufferStrategy)
+  : cmConnection(bufferStrategy)
+  , Port(Port)
 {
 }
 

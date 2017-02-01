@@ -27,6 +27,7 @@
 #include "cm_auto_ptr.hxx"
 #if defined(HAVE_DEBUG_SERVER)
 #include "cmDebugServerConsole.h"
+#include "cmDebugServerJson.h"
 #endif
 #include "cmDebugger.h"
 
@@ -691,14 +692,23 @@ void cmake::SetArgs(const std::vector<std::string>& args,
         cmSystemTools::Error("No file specified for --graphviz");
       }
 #if defined(HAVE_DEBUG_SERVER)
-    } else if (arg.find("--remote-debug=", 0) == 0) {
-      std::string connection = arg.substr(strlen("--remote-debug="));
-
+    } else if (arg.find("--debugger=", 0) == 0) {
+      std::string connection = arg.substr(strlen("--debugger="));
       this->Debugger = cmDebugger::Create(*this);
+
       if (this->Debugger) {
-        auto server = new cmDebugServerConsole(*this->Debugger);
-        this->Debugger->AddListener(server);
-        server->StartServeThread();
+        cmDebugServer* server = 0;
+        if (connection == "stdin") {
+          server = new cmDebugServerConsole(*this->Debugger);
+        } else {
+          server =
+            new cmDebugServerJson(*this->Debugger, std::stoi(connection));
+        }
+
+        if (server) {
+          this->Debugger->AddListener(server);
+          server->StartServeThread();
+        }
       }
 #endif
     } else if (arg.find("--debug-trycompile", 0) == 0) {

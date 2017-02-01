@@ -9,14 +9,14 @@
 class cmake;
 class cmDebugger;
 
-class cmDebugerListener
+class cmDebuggerListener
 {
 protected:
   cmDebugger& Debugger;
 
 public:
-  cmDebugerListener(cmDebugger& debugger);
-  virtual ~cmDebugerListener() {}
+  cmDebuggerListener(cmDebugger& debugger);
+  virtual ~cmDebuggerListener() {}
   virtual void OnChangeState() {}
   virtual void OnUserMessage(const std::string& msg) { (void)msg; }
 };
@@ -71,8 +71,8 @@ public:
   virtual std::string Print(const std::string& expr) = 0;
   virtual std::string PrintBacktrace() = 0;
 
-  virtual void AddListener(cmDebugerListener* listener) = 0;
-  virtual void RemoveListener(cmDebugerListener* listener) = 0;
+  virtual void AddListener(cmDebuggerListener* listener) = 0;
+  virtual void RemoveListener(cmDebuggerListener* listener) = 0;
 };
 
 #endif // CMAKE_CMREMOTEDEBUGGER_H
