@@ -1,6 +1,12 @@
 #include "cmDebugServerJson.h"
 #include "cmMakefile.h"
 #include "cmServerConnection.h"
+
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+#include "cm_jsoncpp_reader.h"
+#include "cm_jsoncpp_value.h"
+#endif
+
 #include <sstream>
 
 class cmJsonBufferStrategy : public cmConnectionBufferStrategy
@@ -10,7 +16,8 @@ class cmJsonBufferStrategy : public cmConnectionBufferStrategy
 
   virtual std::string BufferMessage(std::string& rawBuffer) override
   {
-    for (auto c : rawBuffer) {
+    for (size_t i = 0; i < rawBuffer.size(); i++) {
+      auto c = rawBuffer[i];
       if (c == '{')
         bracesDepth++;
       if (c == '}')
@@ -19,10 +26,12 @@ class cmJsonBufferStrategy : public cmConnectionBufferStrategy
       if (bracesDepth == 0) {
         std::string rtn;
         rtn.swap(readBuffer);
+        rawBuffer.erase(0, i + 1);
         return rtn;
       }
     }
 
+    rawBuffer.clear();
     return std::string();
   }
 };
@@ -38,8 +47,36 @@ cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger, size_t port)
 {
 }
 
-void cmDebugServerJson::ProcessRequest(const std::string& request)
+void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
 {
+  Json::Reader reader;
+  Json::Value value;
+  if (!reader.parse(jsonRequest, value)) {
+    return;
+  }
+
+  auto request = value["Command"].asString();
+
+  if (request == "Continue") {
+    Debugger.Continue();
+  } else if (request == "Break") {
+    Debugger.Break();
+  } else if (request == "Step") {
+    Debugger.Step();
+  } else if (request == "RequestBacktrace") {
+    auto bt = Debugger.GetBacktrace();
+    std::stringstream ss;
+    bt.PrintCallStack(ss);
+    Connection->WriteData(ss.str());
+  } else if (request.find("RequestEval") == 0) {
+
+  } else if (request.find("RequestBreakpointInfo") == 0) {
+
+  } else if (request.find("ClearBreakpoints") == 0) {
+
+  } else if (request.find("AddBreakpoint") == 0) {
+    Debugger.SetBreakpoint(value["File"].asString(), value["Line"].asInt());
+  }
 }
 
 void cmDebugServerJson::SendStateUpdate()
@@ -47,21 +84,35 @@ void cmDebugServerJson::SendStateUpdate()
   auto currentLine = Debugger.CurrentLine();
 
   std::string state = "";
+  Json::Value value;
   switch (Debugger.CurrentState()) {
     case cmDebugger::State::Running:
-      state = "Running";
+      value["State"] = "Running";
       break;
-    case cmDebugger::State::Paused:
-      state = "Paused";
-      break;
+    case cmDebugger::State::Paused: {
+      value["State"] = "Paused";
+      Json::Value back(Json::arrayValue);
+
+      auto backtrace = Debugger.GetBacktrace();
+      while (!backtrace.Top().FilePath.empty()) {
+        Json::Value frame(Json::objectValue);
+        frame["File"] = backtrace.Top().FilePath;
+        frame["Line"] = backtrace.Top().Line;
+        frame["Name"] = backtrace.Top().Name;
+        back.append(frame);
+        backtrace = backtrace.Pop();
+      }
+      value["Backtrace"] = back;
+    } break;
     case cmDebugger::State::Unknown:
-      state = "Unknown";
+      value["State"] = "Unknown";
       break;
   }
+
+  value["File"] = currentLine.FilePath;
+  value["Line"] = currentLine.Line;
   if (Connection && Connection->IsOpen())
-    Connection->WriteData(
-      "{State: '" + state + "', File: '" + currentLine.FilePath +
-      "', Line: " + std::to_string(currentLine.Line) + "}");
+    Connection->WriteData(value.toStyledString());
 }
 
 void cmDebugServerJson::OnChangeState()
