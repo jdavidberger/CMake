@@ -63,13 +63,15 @@ void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
     Debugger.Break();
   } else if (request == "Step") {
     Debugger.Step();
-  } else if (request == "RequestBacktrace") {
-    auto bt = Debugger.GetBacktrace();
-    std::stringstream ss;
-    bt.PrintCallStack(ss);
-    Connection->WriteData(ss.str());
-  } else if (request.find("RequestEval") == 0) {
-
+  } else if (request.find("Evaluate") == 0) {
+    const char* v = Debugger.GetMakefile()->ExpandVariablesInString(
+      value["Request"].asString());
+    value.removeMember("Command");
+    if (v)
+      value["Response"] = std::string(v);
+    else
+      value["Response"] = false;
+    Connection->WriteData(value.toStyledString());
   } else if (request.find("RequestBreakpointInfo") == 0) {
 
   } else if (request.find("ClearBreakpoints") == 0) {
