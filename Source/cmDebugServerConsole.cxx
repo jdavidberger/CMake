@@ -45,6 +45,8 @@ void cmDebugServerConsole::ProcessRequest(const std::string& request)
     Debugger.Continue();
   } else if (request == "b") {
     Debugger.Break();
+  } else if (request == "q") {
+    exit(0);
   } else if (request == "s") {
     Debugger.Step();
   } else if (request == "bt") {
@@ -132,19 +134,4 @@ void cmDebugServerConsole::OnChangeState()
       printPrompt();
       break;
   }
-}
-
-cmDebugServer::cmDebugServer(cmDebugger& debugger, cmConnection* conn)
-  : cmServerBase(conn)
-  , cmDebuggerListener(debugger)
-{
-}
-
-bool cmDebugServer::OnSignal(int signum)
-{
-  if (signum == 2) {
-    Debugger.Break();
-    return true;
-  }
-  return false;
 }

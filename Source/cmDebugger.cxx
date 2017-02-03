@@ -17,6 +17,7 @@ class cmRemoteDebugger_impl : public cmDebugger
   std::condition_variable cv;
   bool breakPending = true; // Break on connection
   std::vector<cmBreakpoint> breakpoints;
+  int32_t breakDepth = -1;
 
 public:
   ~cmRemoteDebugger_impl()
@@ -47,10 +48,12 @@ public:
   void PauseExecution(std::unique_lock<std::mutex>& lk)
   {
     breakPending = false;
+    breakDepth = -1;
     state = State::Paused;
     for (auto& l : listeners) {
       l->OnChangeState();
     }
+
     cv.wait(lk);
     state = State::Running;
     for (auto& l : listeners) {
@@ -85,6 +88,13 @@ public:
     std::unique_lock<std::mutex> lk(m);
     state = State::Running;
     currentLocation = context;
+
+    if (breakDepth != -1) {
+      auto currentDepth = GetBacktrace().Depth();
+      if (currentDepth == breakDepth)
+        breakPending = true;
+    }
+
     if (breakPending) {
       PauseExecution(lk);
     }
@@ -97,7 +107,11 @@ public:
     }
   }
 
-  void ErrorHook(const cmListFileContext& context) override {}
+  void ErrorHook(const cmListFileContext& context) override
+  {
+    std::unique_lock<std::mutex> lk(m);
+    PauseExecution(lk);
+  }
 
   breakpoint_id SetBreakpoint(const std::string& fileName,
                               size_t line) override
@@ -119,11 +133,10 @@ public:
 
   void Break() override { breakPending = true; }
 
-  void Step(size_t n = 1) override
+  void Step() override
   {
-    for (size_t i = 0; i < n; i++) {
-      StepIn();
-    }
+    breakDepth = (int32_t)GetBacktrace().Depth();
+    Continue();
   }
 
   void StepIn() override
@@ -132,11 +145,21 @@ public:
     Continue();
   }
 
-  void StepOut() override { Step(); }
+  void StepOut() override
+  {
+    breakDepth = (int32_t)(GetBacktrace().Depth()) - 1;
+    Continue();
+  }
 
-  std::string Print(const std::string& expr) override { return ""; }
+  void ClearBreakpoint(const std::string& fileName, size_t line) override
+  {
+    for (auto& br : breakpoints) {
+      if (br.matches(fileName, line))
+        br.file = "";
+    }
+  }
 
-  std::string PrintBacktrace() override { return ""; }
+  void ClearAllBreakpoints() override { breakpoints.clear(); }
 
   State::t CurrentState() const override { return this->state; }
 };
@@ -162,11 +185,16 @@ cmBreakpoint::operator bool() const
 }
 inline bool cmBreakpoint::matches(const cmListFileContext& ctx) const
 {
+  return matches(ctx.FilePath, ctx.Line);
+}
+
+bool cmBreakpoint::matches(const std::string& testFile, size_t testLine) const
+{
   if (file.empty())
     return false;
 
-  if (line != ctx.Line && line != (size_t)-1)
+  if (line != testLine && line != (size_t)-1)
     return false;
 
-  return ctx.FilePath.find(file) != std::string::npos;
+  return testFile.find(file) != std::string::npos;
 }

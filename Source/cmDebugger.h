@@ -29,6 +29,8 @@ public:
   cmBreakpoint(const std::string& file = "", size_t line = 0);
   operator bool() const;
   bool matches(const cmListFileContext& ctx) const;
+
+  bool matches(const std::string& fileName, size_t line) const;
 };
 
 class cmDebugger
@@ -61,15 +63,14 @@ public:
                                       size_t line) = 0;
   virtual breakpoint_id SetWatchpoint(const std::string& expr) = 0;
   virtual void ClearBreakpoint(breakpoint_id) = 0;
+  virtual void ClearBreakpoint(const std::string& fileName, size_t line) = 0;
+  virtual void ClearAllBreakpoints() = 0;
 
   virtual void Continue() = 0;
   virtual void Break() = 0;
-  virtual void Step(size_t n = 1) = 0;
+  virtual void Step() = 0;
   virtual void StepIn() = 0;
   virtual void StepOut() = 0;
-
-  virtual std::string Print(const std::string& expr) = 0;
-  virtual std::string PrintBacktrace() = 0;
 
   virtual void AddListener(cmDebuggerListener* listener) = 0;
   virtual void RemoveListener(cmDebuggerListener* listener) = 0;
