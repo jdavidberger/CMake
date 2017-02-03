@@ -307,6 +307,7 @@ void cmConnection::WriteData(const std::string& data)
   req->req.data = this;
   req->buf = uv_buf_init(new char[ds], static_cast<unsigned int>(ds));
   memcpy(req->buf.base, data.c_str(), ds);
+  printf("Out: %s\n", data.c_str());
 
   uv_write(reinterpret_cast<uv_write_t*>(req),
            static_cast<uv_stream_t*>(this->WriteStream),

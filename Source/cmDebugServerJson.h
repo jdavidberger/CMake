@@ -1,10 +1,10 @@
 #pragma once
 
+#include "cmDebugServer.h"
 #include "cmDebugServerConsole.h"
 #include "cmDebugger.h"
 #include "cmServer.h"
 #include "cmServerConnection.h"
-#include <memory>
 
 class cmDebugServerJson : public cmDebugServer
 {

@@ -1006,6 +1006,7 @@ endif()
 
 if(CMake_ENABLE_DEBUG_SERVER)
   add_library(CMakeDebugServerLib
+    cmDebugServer.cxx cmDebugServer.h
     cmDebugServerConsole.cxx cmDebugServerConsole.h
     cmDebugServerJson.cxx cmDebugServerJson.h
     )

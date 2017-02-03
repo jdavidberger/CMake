@@ -1,17 +1,10 @@
 #ifndef CMAKE_CMDEBUGSERVERSIMPLE_H
 #define CMAKE_CMDEBUGSERVERSIMPLE_H
 
+#include "cmDebugServer.h"
 #include "cmDebugger.h"
 #include "cmServer.h"
 #include "cmServerConnection.h"
-#include <memory>
-
-class cmDebugServer : public cmServerBase, public cmDebuggerListener
-{
-public:
-  cmDebugServer(cmDebugger& debugger, cmConnection* conn);
-  virtual bool OnSignal(int signum) override;
-};
 
 class cmDebugServerConsole : public cmDebugServer
 {

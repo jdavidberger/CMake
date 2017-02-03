@@ -429,6 +429,15 @@ void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
   }
 }
 
+size_t cmListFileBacktrace::Depth() const
+{
+  size_t depth = 0;
+  for (Entry* i = this->Cur->Up; i; i = i->Up) {
+    depth++;
+  }
+  return depth;
+}
+
 std::ostream& operator<<(std::ostream& os, cmListFileContext const& lfc)
 {
   os << lfc.FilePath;
