@@ -26,8 +26,8 @@
 #endif
 
 #include <algorithm>
+#include <fstream>
 #include <string>
-
 // Get rid of some windows macros:
 #undef max
 
@@ -1058,7 +1058,6 @@ cmServerResponse cmServerProtocol1_0::ProcessGlobalSettings(
   // Currently used generator:
   obj[kGENERATOR_KEY] = this->GeneratorInfo.GeneratorName;
   obj[kEXTRA_GENERATOR_KEY] = this->GeneratorInfo.ExtraGeneratorName;
-
   return request.Reply(obj);
 }
 

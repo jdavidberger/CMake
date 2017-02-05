@@ -404,9 +404,9 @@ void cmServer::OnServeStart()
   fileMonitor = std::make_shared<cmFileMonitor>(GetLoop());
 }
 
-void cmServer::OnServeStop(std::string* pString)
+void cmServer::StartShutDown()
 {
-  cmServerBase::OnServeStop(pString);
+  cmServerBase::StartShutDown();
   if (fileMonitor) {
     fileMonitor->StopMonitoring();
     fileMonitor.reset();
@@ -452,16 +452,9 @@ bool cmServerBase::Serve(std::string* errorMessage)
 
   if (uv_run(&Loop, UV_RUN_DEFAULT) != 0) {
     *errorMessage = "Internal Error: Event loop stopped in unclean state.";
-    OnServeStop(errorMessage);
+    StartShutDown();
     return false;
   }
-
-  for (auto& connection : Connections) {
-    if (!connection->OnServeStop(errorMessage))
-      return false;
-  }
-
-  OnServeStop(errorMessage);
 
   return true;
 }
@@ -482,7 +475,7 @@ void cmServerBase::OnServeStart()
   uv_check_start(&cbHandle, &onLoop);
 }
 
-void cmServerBase::OnServeStop(std::string* pString)
+void cmServerBase::StartShutDown()
 {
   if (!uv_is_closing((const uv_handle_t*)&this->SIGINTHandler))
     uv_signal_stop(&this->SIGINTHandler);
@@ -490,11 +483,19 @@ void cmServerBase::OnServeStop(std::string* pString)
     uv_signal_stop(&this->SIGHUPHandler);
   uv_prepare_stop(&cbPrepareHandle);
   uv_check_stop(&cbHandle);
+
+  for (auto& connection : Connections)
+    connection->OnServerShuttingDown();
+
+  uv_stop(&Loop);
+  uv_async_send(&WakeupLoop);
+  uv_walk(&Loop, on_walk_to_shutdown, NULL);
 }
 
 bool cmServerBase::OnSignal(int signum)
 {
-  return false;
+  StartShutDown();
+  return true;
 }
 
 cmServerBase::cmServerBase(cmConnection* connection)
@@ -521,11 +522,10 @@ cmServerBase::~cmServerBase()
 {
   Connections.clear();
 
-  uv_stop(&Loop);
-  uv_async_send(&WakeupLoop);
-  uv_walk(&Loop, on_walk_to_shutdown, NULL);
+  StartShutDown();
 
-  ServeThread.join();
+  if (ServeThread.joinable())
+    ServeThread.join();
 }
 
 void cmServerBase::AddNewConnection(cmConnection* ownedConnection)
@@ -543,4 +543,21 @@ void cmServerBase::ProcessOne()
 uv_loop_t* cmServerBase::GetLoop()
 {
   return &Loop;
+}
+
+void cmServerBase::OnDisconnect(cmConnection* pConnection)
+{
+  auto pred = [pConnection](const std::unique_ptr<cmConnection>& m) {
+    return m.get() == pConnection;
+  };
+  Connections.erase(
+    std::remove_if(Connections.begin(), Connections.end(), pred),
+    Connections.end());
+  if (Connections.empty())
+    StartShutDown();
+}
+
+void cmServerBase::NotifyDataQueued()
+{
+  uv_async_send(&WakeupLoop);
 }

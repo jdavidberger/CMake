@@ -7,6 +7,7 @@
 #include "cmServerConnection.h"
 #include "cm_uv.h"
 #include "string.h"
+#include <fstream>
 
 struct write_req_t
 {
@@ -29,7 +30,7 @@ void cmConnection::on_read(uv_stream_t* stream, ssize_t nread,
   if (nread >= 0) {
     conn->ReadData(std::string(buf->base, buf->base + nread));
   } else {
-    conn->TriggerShutdown();
+    conn->OnDisconnect(nread);
   }
 
   delete[](buf->base);
@@ -69,15 +70,9 @@ void cmConnection::on_signal(uv_signal_t* signal, int signum)
   conn->OnSignal(signum);
 }
 
-void cmConnection::TriggerShutdown()
-{
-}
-
 void cmConnection::OnSignal(int signum)
 {
-  if (!Server->OnSignal(signum)) {
-    TriggerShutdown();
-  }
+  Server->OnSignal(signum);
 }
 
 bool cmConnection::IsOpen() const
@@ -85,7 +80,7 @@ bool cmConnection::IsOpen() const
   return this->WriteStream != 0;
 }
 
-void cmConnection::WriteData(const std::__cxx11::string& data)
+void cmConnection::WriteData(const std::string& data)
 {
   assert(this->WriteStream);
 
@@ -95,8 +90,6 @@ void cmConnection::WriteData(const std::__cxx11::string& data)
   req->req.data = this;
   req->buf = uv_buf_init(new char[ds], static_cast<unsigned int>(ds));
   memcpy(req->buf.base, data.c_str(), ds);
-  printf("Out: %s\n", data.c_str());
-
   uv_write(reinterpret_cast<uv_write_t*>(req),
            static_cast<uv_stream_t*>(this->WriteStream), &req->buf, 1,
            on_write);
@@ -104,15 +97,14 @@ void cmConnection::WriteData(const std::__cxx11::string& data)
 
 cmConnection::~cmConnection()
 {
-  TriggerShutdown();
+  OnServerShuttingDown();
 }
 
-void cmConnection::ReadData(const std::__cxx11::string& data)
+void cmConnection::ReadData(const std::string& data)
 {
   this->RawReadBuffer += data;
   if (BufferStrategy) {
-    std::__cxx11::string packet =
-      BufferStrategy->BufferMessage(this->RawReadBuffer);
+    std::string packet = BufferStrategy->BufferMessage(this->RawReadBuffer);
     do {
       QueueRequest(packet);
       packet = BufferStrategy->BufferMessage(this->RawReadBuffer);
@@ -130,7 +122,7 @@ void cmConnection::PopOne()
     return;
   }
 
-  const std::__cxx11::string input = this->Queue.front();
+  const std::string input = this->Queue.front();
   this->Queue.erase(this->Queue.begin());
   Server->ProcessRequest(this, input);
 }
@@ -158,6 +150,7 @@ void cmConnection::Connect(uv_stream_t* server)
 void cmConnection::QueueRequest(const std::string& request)
 {
   this->Queue.push_back(request);
+  this->Server->NotifyDataQueued();
 }
 
 bool cmConnection::OnServeStart(std::string* pString)
@@ -165,7 +158,12 @@ bool cmConnection::OnServeStart(std::string* pString)
   return true;
 }
 
-bool cmConnection::OnServeStop(std::string* pString)
+bool cmConnection::OnServerShuttingDown()
 {
   return true;
+}
+
+void cmConnection::OnDisconnect(int onerror)
+{
+  this->Server->OnDisconnect(this);
 }

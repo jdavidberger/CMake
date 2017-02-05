@@ -38,11 +38,15 @@ public:
   virtual bool StartServeThread();
 
   virtual bool Serve(std::string* errorMessage);
+  virtual void NotifyDataQueued();
 
   virtual void OnServeStart();
-  virtual void OnServeStop(std::string* pString);
+  virtual void StartShutDown();
+
   virtual bool OnSignal(int signum);
   uv_loop_t* GetLoop();
+
+  void OnDisconnect(cmConnection* pConnection);
 
 protected:
   std::vector<std::unique_ptr<cmConnection> > Connections;
@@ -96,7 +100,7 @@ private:
 public:
   void OnServeStart() override;
 
-  void OnServeStop(std::string* pString) override;
+  void StartShutDown() override;
 
 public:
   void OnConnected(cmConnection* connection) override;

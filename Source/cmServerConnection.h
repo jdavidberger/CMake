@@ -7,8 +7,8 @@
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include "cmPipeConnection.h"
+#include "cmTcpIpConnection.h"
 #include "cm_uv.h"
-
 #endif
 
 class cmServer;
@@ -25,14 +25,14 @@ private:
   std::string RequestBuffer;
 };
 
-class cmStdIoConnection : public virtual cmConnection
+class cmStdIoConnection : public cmConnection
 {
 public:
-  cmStdIoConnection(cmConnectionBufferStrategy* bufferStrategy = 0);
+  cmStdIoConnection(cmConnectionBufferStrategy* bufferStrategy);
 
   void SetServer(cmServerBase* s) override;
 
-  bool OnServeStop(std::string* pString) override;
+  bool OnServerShuttingDown() override;
 
   bool OnServeStart(std::string* pString) override;
 
@@ -59,4 +59,10 @@ class cmServerPipeConnection : public cmPipeConnection
 {
 public:
   cmServerPipeConnection(const std::string& name);
+};
+
+class cmServerTcpIpConnection : public cmTcpIpConnection
+{
+public:
+  cmServerTcpIpConnection(int port);
 };
