@@ -54,9 +54,9 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
   Json::Reader reader;
   Json::Value value;
   if (!reader.parse(jsonRequest, value)) {
+
     return;
   }
-  printf("In: %s\n", jsonRequest.c_str());
   auto request = value["Command"].asString();
 
   if (request == "Continue") {
