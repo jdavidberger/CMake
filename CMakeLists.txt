@@ -536,8 +536,11 @@ int main(void) { return 0; }
     set(CMAKE_LIBUV_LIBRARIES)
   endif()
 
-  #---------------------------------------------------------------------
-  # Build XMLRPC library for CMake and CTest.
+  #Build YAJLlibrary.
+  set(CMAKE_YAJL_LIBRARIES cmyajl)
+  add_subdirectory(Utilities/cmyajl)
+  CMAKE_SET_TARGET_FOLDER(cmyajl "Utilities/3rdParty")
+
   if(CTEST_USE_XMLRPC)
     find_package(XMLRPC QUIET REQUIRED libwww-client)
     if(NOT XMLRPC_FOUND)
