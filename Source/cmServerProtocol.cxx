@@ -19,13 +19,14 @@
 #include "cmServerDictionary.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
+#include "cmConnection.h"
 #include "cm_jsoncpp_reader.h"
 #include "cm_jsoncpp_value.h"
+
 #endif
 
 #include <algorithm>
 #include <string>
-#include <vector>
 
 // Get rid of some windows macros:
 #undef max
@@ -121,11 +122,13 @@ void getCMakeInputs(const cmGlobalGenerator* gg, const std::string& sourceDir,
 
 } // namespace
 
-cmServerRequest::cmServerRequest(cmServer* server, const std::string& t,
-                                 const std::string& c, const Json::Value& d)
+cmServerRequest::cmServerRequest(cmServer* server, cmConnection* connection,
+                                 const std::string& t, const std::string& c,
+                                 const Json::Value& d)
   : Type(t)
   , Cookie(c)
   , Data(d)
+  , Connection(connection)
   , m_Server(server)
 {
 }
@@ -224,11 +227,12 @@ cmFileMonitor* cmServerProtocol::FileMonitor() const
   return this->m_Server ? this->m_Server->FileMonitor() : nullptr;
 }
 
-void cmServerProtocol::SendSignal(const std::string& name,
+void cmServerProtocol::SendSignal(cmConnection* connection,
+                                  const std::string& name,
                                   const Json::Value& data) const
 {
   if (this->m_Server) {
-    this->m_Server->WriteSignal(name, data);
+    this->m_Server->WriteSignal(connection, name, data);
   }
 }
 
@@ -393,7 +397,8 @@ bool cmServerProtocol1_0::DoActivate(const cmServerRequest& request,
   return true;
 }
 
-void cmServerProtocol1_0::HandleCMakeFileChanges(const std::string& path,
+void cmServerProtocol1_0::HandleCMakeFileChanges(cmConnection* connection,
+                                                 const std::string& path,
                                                  int event, int status)
 {
   assert(status == 0);
@@ -401,7 +406,7 @@ void cmServerProtocol1_0::HandleCMakeFileChanges(const std::string& path,
 
   if (!m_isDirty) {
     m_isDirty = true;
-    SendSignal(kDIRTY_SIGNAL, Json::objectValue);
+    SendSignal(connection, kDIRTY_SIGNAL, Json::objectValue);
   }
   Json::Value obj = Json::objectValue;
   obj[kPATH_KEY] = path;
@@ -414,7 +419,7 @@ void cmServerProtocol1_0::HandleCMakeFileChanges(const std::string& path,
   }
 
   obj[kPROPERTIES_KEY] = properties;
-  SendSignal(kFILE_CHANGE_SIGNAL, obj);
+  SendSignal(connection, kFILE_CHANGE_SIGNAL, obj);
 }
 
 const cmServerResponse cmServerProtocol1_0::Process(
@@ -1019,10 +1024,11 @@ cmServerResponse cmServerProtocol1_0::ProcessConfigure(
   std::vector<std::string> toWatchList;
   getCMakeInputs(gg, std::string(), buildDir, nullptr, &toWatchList, nullptr);
 
-  FileMonitor()->MonitorPaths(toWatchList,
-                              [this](const std::string& p, int e, int s) {
-                                this->HandleCMakeFileChanges(p, e, s);
-                              });
+  auto connection = request.Connection;
+  FileMonitor()->MonitorPaths(
+    toWatchList, [this, connection](const std::string& p, int e, int s) {
+      this->HandleCMakeFileChanges(connection, p, e, s);
+    });
 
   m_State = STATE_CONFIGURED;
   m_isDirty = false;

@@ -12,8 +12,10 @@ public:
   cmDebugServerJson(cmDebugger& debugger, size_t port);
   cmDebugServerJson(cmDebugger& debugger, cmConnection* conn);
 
-  virtual void ProcessRequest(const std::string& request) override;
-  void SendStateUpdate();
+  virtual void ProcessRequest(cmConnection* connection,
+                              const std::string& request) override;
+  void SendStateUpdate(cmConnection* connection);
   void OnChangeState() override;
-  virtual void OnNewConnection();
+
+  void OnConnected(cmConnection* connection) override;
 };
