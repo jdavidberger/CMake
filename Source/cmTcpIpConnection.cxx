@@ -33,9 +33,9 @@ cmTcpIpConnection::cmTcpIpConnection(int Port)
 }
 
 cmTcpIpConnection::cmTcpIpConnection(
-  int Port, cmConnectionBufferStrategy* bufferStrategy)
+  int port, cmConnectionBufferStrategy* bufferStrategy)
   : cmConnection(bufferStrategy)
-  , Port(Port)
+  , Port(port)
 {
 }
 
@@ -70,7 +70,7 @@ bool cmTcpIpConnection::OnServeStart(std::string* errorMessage)
   return true;
 }
 
-bool cmTcpIpConnection::OnServeStop(std::string* pString)
+bool cmTcpIpConnection::OnServerShuttingDown()
 {
   if (this->ClientHandle) {
     uv_close(reinterpret_cast<uv_handle_t*>(this->ClientHandle), &on_close);

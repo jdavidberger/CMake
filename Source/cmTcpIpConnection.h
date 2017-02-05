@@ -1,8 +1,8 @@
 #pragma once
 
-#include "cmServerConnection.h"
+#include "cmConnection.h"
 
-class cmTcpIpConnection : public virtual cmConnection
+class cmTcpIpConnection : public cmConnection
 {
 public:
   ~cmTcpIpConnection();
@@ -11,7 +11,7 @@ public:
 
   bool OnServeStart(std::string* pString) override;
 
-  bool OnServeStop(std::string* pString) override;
+  bool OnServerShuttingDown() override;
 
   void SetServer(cmServerBase* s) override;
 

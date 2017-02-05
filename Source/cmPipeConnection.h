@@ -10,13 +10,15 @@
 #include <string>
 #include <vector>
 
-class cmPipeConnection : public virtual cmConnection
+class cmPipeConnection : public cmConnection
 {
 public:
   cmPipeConnection(const std::string& name,
                    cmConnectionBufferStrategy* bufferStrategy = 0);
-  bool DoSetup(cmServerBase* s, std::string* errorMessage);
-  void TearDown();
+
+  bool OnServeStart(std::string* pString) override;
+
+  bool OnServerShuttingDown() override;
 
   void Connect(uv_stream_t* server) override;
 

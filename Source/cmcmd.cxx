@@ -981,9 +981,11 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
 
     if (args[1] == "server") {
       const std::string pipePrefix = "--pipe=";
+      const std::string socketPrefix = "--socket=";
       bool supportExperimental = false;
       bool isDebug = false;
       std::string pipe;
+      int port = 0;
 
       for (size_t i = 2; i < args.size(); ++i) {
         const std::string& a = args[i];
@@ -1000,6 +1002,13 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
             cmSystemTools::Error("No pipe given after --pipe=");
             return 2;
           }
+        } else if (a.substr(0, socketPrefix.size()) == socketPrefix) {
+          isDebug = false;
+          port = std::stoi(a.substr(pipePrefix.size()));
+          if (port == 0) {
+            cmSystemTools::Error("Invalid port given after --socket=");
+            return 2;
+          }
         } else {
           cmSystemTools::Error("Unknown argument for server mode");
           return 1;
@@ -1009,8 +1018,10 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       cmConnection* conn;
       if (isDebug) {
         conn = new cmServerStdIoConnection;
-      } else {
+      } else if (!pipe.empty()) {
         conn = new cmServerPipeConnection(pipe);
+      } else {
+        conn = new cmServerTcpIpConnection(port);
       }
       cmServer server(conn, supportExperimental);
       std::string errorMessage;

@@ -7,6 +7,7 @@
 #include "cmFileMonitor.h"
 #include "cmServer.h"
 #include "cmTcpIpConnection.h"
+#include <fstream>
 
 cmStdIoConnection::cmStdIoConnection(
   cmConnectionBufferStrategy* bufferStrategy)
@@ -50,9 +51,8 @@ bool cmStdIoConnection::OnServeStart(std::string* pString)
   return cmConnection::OnServeStart(pString);
 }
 
-bool cmStdIoConnection::OnServeStop(std::string* pString)
+bool cmStdIoConnection::OnServerShuttingDown()
 {
-  (void)(pString);
   if (usesTty) {
     uv_read_stop(reinterpret_cast<uv_stream_t*>(&this->Input.tty));
     uv_close(reinterpret_cast<uv_handle_t*>(&this->Input.tty), &on_close);
@@ -112,4 +112,9 @@ std::string cmServerBufferStrategy::BufferMessage(std::string& RawReadBuffer)
       this->RequestBuffer += "\n";
     }
   }
+}
+
+cmServerTcpIpConnection::cmServerTcpIpConnection(int port)
+  : cmTcpIpConnection(port, new cmServerBufferStrategy)
+{
 }

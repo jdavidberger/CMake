@@ -5,9 +5,9 @@
 #pragma once
 
 #include "cm_uv.h"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 class cmServerBase;
 
@@ -33,21 +33,19 @@ public:
 
   virtual void Connect(uv_stream_t* server);
 
-  virtual void ReadData(const std::__cxx11::string& data);
-
-  virtual void TriggerShutdown();
+  virtual void ReadData(const std::string& data);
 
   virtual void OnSignal(int signum);
 
-  virtual bool OnServeStart(std::__cxx11::string* pString);
+  virtual bool OnServeStart(std::string* pString);
 
-  virtual bool OnServeStop(std::__cxx11::string* pString);
+  virtual bool OnServerShuttingDown();
 
   virtual bool IsOpen() const;
 
-  virtual void WriteData(const std::__cxx11::string& data);
+  virtual void WriteData(const std::string& data);
 
-  virtual void QueueRequest(const std::__cxx11::string& request);
+  virtual void QueueRequest(const std::string& request);
 
   virtual void PopOne();
 
@@ -55,6 +53,7 @@ public:
 
   virtual void SetServer(cmServerBase* s);
 
+  virtual void OnDisconnect(int errorCode);
   uv_stream_t* ReadStream = nullptr;
   cmServerBase* Server = 0;
   uv_stream_t* WriteStream = nullptr;
