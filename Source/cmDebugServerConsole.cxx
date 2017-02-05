@@ -3,9 +3,9 @@
 //
 
 #include "cmDebugServerConsole.h"
+#include "cmConnection.h"
 #include "cmMakefile.h"
 #include "cmServerConnection.h"
-#include <sstream>
 
 cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger,
                                            cmConnection* conn)
@@ -39,7 +39,8 @@ cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger)
 {
 }
 
-void cmDebugServerConsole::ProcessRequest(const std::string& request)
+void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
+                                          const std::string& request)
 {
   if (request == "c") {
     Debugger.Continue();
@@ -53,15 +54,15 @@ void cmDebugServerConsole::ProcessRequest(const std::string& request)
     auto bt = Debugger.GetBacktrace();
     std::stringstream ss;
     bt.PrintCallStack(ss);
-    Connection->WriteData(ss.str());
+    connection->WriteData(ss.str());
   } else if (request.find("print ") == 0) {
     auto whatToPrint = request.substr(strlen("print "));
     auto val = Debugger.GetMakefile()->GetDefinition(whatToPrint);
     if (val)
-      Connection->WriteData("$ " + whatToPrint + " = " + std::string(val) +
+      connection->WriteData("$ " + whatToPrint + " = " + std::string(val) +
                             "\n");
     else
-      Connection->WriteData(whatToPrint + " isn't set.\n");
+      connection->WriteData(whatToPrint + " isn't set.\n");
   } else if (request.find("info br") == 0) {
     std::stringstream ss;
     auto& bps = Debugger.GetBreakpoints();
@@ -71,7 +72,7 @@ void cmDebugServerConsole::ProcessRequest(const std::string& request)
            << std::endl;
       }
     }
-    Connection->WriteData(ss.str());
+    connection->WriteData(ss.str());
   } else if (request.find("clear") == 0) {
     auto space = request.find(' ');
     if (space == std::string::npos) {
@@ -79,11 +80,11 @@ void cmDebugServerConsole::ProcessRequest(const std::string& request)
       for (unsigned i = 0; i < bps.size(); i++) {
         Debugger.ClearBreakpoint(i);
       }
-      Connection->WriteData("Cleared all breakpoints\n");
+      connection->WriteData("Cleared all breakpoints\n");
     } else {
       auto clearWhat = stoi(request.substr(space));
       Debugger.ClearBreakpoint(clearWhat);
-      Connection->WriteData("Cleared breakpoint " + std::to_string(clearWhat) +
+      connection->WriteData("Cleared breakpoint " + std::to_string(clearWhat) +
                             "\n");
     }
   } else if (request.find("br") == 0) {
@@ -102,36 +103,38 @@ void cmDebugServerConsole::ProcessRequest(const std::string& request)
       }
 
       Debugger.SetBreakpoint(bpSpecifier, line);
-      Connection->WriteData("Break at " + bpSpecifier + ":" +
+      connection->WriteData("Break at " + bpSpecifier + ":" +
                             std::to_string(line) + "\n");
     }
   }
-  printPrompt();
+  printPrompt(connection);
 }
-void cmDebugServerConsole::printPrompt()
+void cmDebugServerConsole::printPrompt(cmConnection* connection)
 {
-  Connection->WriteData("(debugger) > ");
+  connection->WriteData("(debugger) > ");
 }
 void cmDebugServerConsole::OnChangeState()
 {
   cmDebuggerListener::OnChangeState();
 
-  auto currentLine = Debugger.CurrentLine();
-  switch (Debugger.CurrentState()) {
-    case cmDebugger::State::Running:
-      Connection->WriteData("Running...\n");
-      break;
-    case cmDebugger::State::Paused:
-      Connection->WriteData("Paused at " + currentLine.FilePath + ":" +
-                            std::to_string(currentLine.Line) + " (" +
-                            currentLine.Name + ")\n");
-      printPrompt();
-      break;
-    case cmDebugger::State::Unknown:
-      Connection->WriteData("Unknown at " + currentLine.FilePath + ":" +
-                            std::to_string(currentLine.Line) + " (" +
-                            currentLine.Name + ")\n");
-      printPrompt();
-      break;
+  for (auto& Connection : Connections) {
+    auto currentLine = Debugger.CurrentLine();
+    switch (Debugger.CurrentState()) {
+      case cmDebugger::State::Running:
+        Connection->WriteData("Running...\n");
+        break;
+      case cmDebugger::State::Paused:
+        Connection->WriteData("Paused at " + currentLine.FilePath + ":" +
+                              std::to_string(currentLine.Line) + " (" +
+                              currentLine.Name + ")\n");
+        printPrompt(Connection.get());
+        break;
+      case cmDebugger::State::Unknown:
+        Connection->WriteData("Unknown at " + currentLine.FilePath + ":" +
+                              std::to_string(currentLine.Line) + " (" +
+                              currentLine.Name + ")\n");
+        printPrompt(Connection.get());
+        break;
+    }
   }
 }

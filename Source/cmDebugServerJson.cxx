@@ -3,11 +3,12 @@
 #include "cmServerConnection.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
+#include "cmConnection.h"
+#include "cmTcpIpConnection.h"
 #include "cm_jsoncpp_reader.h"
 #include "cm_jsoncpp_value.h"
-#endif
 
-#include <sstream>
+#endif
 
 class cmJsonBufferStrategy : public cmConnectionBufferStrategy
 {
@@ -47,7 +48,8 @@ cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger, size_t port)
 {
 }
 
-void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
+void cmDebugServerJson::ProcessRequest(cmConnection* connection,
+                                       const std::string& jsonRequest)
 {
   Json::Reader reader;
   Json::Value value;
@@ -61,7 +63,7 @@ void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
     Debugger.Continue();
   } else if (request == "Break") {
     Debugger.Break();
-    SendStateUpdate();
+    SendStateUpdate(connection);
   } else if (request == "StepIn") {
     Debugger.StepIn();
   } else if (request == "StepOut") {
@@ -82,7 +84,7 @@ void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
       value["Response"] = std::string(v);
     else
       value["Response"] = false;
-    Connection->WriteData(value.toStyledString());
+    connection->WriteData(value.toStyledString());
   } else if (request.find("ClearBreakpoints") == 0) {
     Debugger.ClearAllBreakpoints();
   } else if (request.find("RemoveBreakpoint") == 0) {
@@ -92,7 +94,7 @@ void cmDebugServerJson::ProcessRequest(const std::string& jsonRequest)
   }
 }
 
-void cmDebugServerJson::SendStateUpdate()
+void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
 {
   auto currentLine = Debugger.CurrentLine();
 
@@ -155,17 +157,18 @@ void cmDebugServerJson::SendStateUpdate()
       break;
   }
 
-  if (Connection && Connection->IsOpen())
-    Connection->WriteData(value.toStyledString());
+  if (connection && connection->IsOpen())
+    connection->WriteData(value.toStyledString());
 }
 
 void cmDebugServerJson::OnChangeState()
 {
   cmDebuggerListener::OnChangeState();
-  SendStateUpdate();
+  for (auto& connection : Connections)
+    SendStateUpdate(connection.get());
 }
 
-void cmDebugServerJson::OnNewConnection()
+void cmDebugServerJson::OnConnected(cmConnection* connection)
 {
-  SendStateUpdate();
+  SendStateUpdate(connection);
 }

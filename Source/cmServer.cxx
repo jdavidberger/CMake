@@ -13,14 +13,35 @@
 #include "cmake.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
+
 #include "cm_jsoncpp_reader.h"
 #include "cm_jsoncpp_value.h"
+
 #endif
 
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-#include <memory>
+
+template <typename T>
+static void onLoop(T* handle)
+{
+  auto serverBase = reinterpret_cast<cmServerBase*>(handle->data);
+  serverBase->ProcessOne();
+}
+
+void on_signal(uv_signal_t* signal, int signum)
+{
+  auto conn = reinterpret_cast<cmServerBase*>(signal->data);
+  conn->OnSignal(signum);
+}
+
+static void on_walk_to_shutdown(uv_handle_t* handle, void* arg)
+{
+  (void)arg;
+  if (!uv_is_closing(handle))
+    uv_close(handle, &cmConnection::on_close);
+}
 
 class cmServer::DebugInfo
 {
@@ -54,12 +75,14 @@ cmServer::~cmServer()
     delete p;
   }
 }
-void cmServer::ProcessRequest(const std::string& input)
+
+void cmServer::ProcessRequest(cmConnection* connection,
+                              const std::string& input)
 {
   Json::Reader reader;
   Json::Value value;
   if (!reader.parse(input, value)) {
-    this->WriteParseError("Failed to parse JSON input.");
+    this->WriteParseError(connection, "Failed to parse JSON input.");
     return;
   }
 
@@ -71,13 +94,13 @@ void cmServer::ProcessRequest(const std::string& input)
     debug->PrintStatistics = debugValue["showStats"].asBool();
   }
 
-  const cmServerRequest request(this, value[kTYPE_KEY].asString(),
+  const cmServerRequest request(this, connection, value[kTYPE_KEY].asString(),
                                 value[kCOOKIE_KEY].asString(), value);
 
   if (request.Type == "") {
     cmServerResponse response(request);
     response.SetError("No type given in request.");
-    this->WriteResponse(response, nullptr);
+    this->WriteResponse(connection, response, nullptr);
     return;
   }
 
@@ -86,9 +109,11 @@ void cmServer::ProcessRequest(const std::string& input)
   if (this->Protocol) {
     this->Protocol->CMakeInstance()->SetProgressCallback(
       reportProgress, const_cast<cmServerRequest*>(&request));
-    this->WriteResponse(this->Protocol->Process(request), debug.get());
+    this->WriteResponse(connection, this->Protocol->Process(request),
+                        debug.get());
   } else {
-    this->WriteResponse(this->SetProtocolVersion(request), debug.get());
+    this->WriteResponse(connection, this->SetProtocolVersion(request),
+                        debug.get());
   }
 }
 
@@ -110,7 +135,7 @@ void cmServer::RegisterProtocol(cmServerProtocol* protocol)
   }
 }
 
-void cmServer::PrintHello() const
+void cmServer::PrintHello(cmConnection* connection) const
 {
   Json::Value hello = Json::objectValue;
   hello[kTYPE_KEY] = "hello";
@@ -129,13 +154,7 @@ void cmServer::PrintHello() const
     protocolVersions.append(tmp);
   }
 
-  this->WriteJsonObject(hello, nullptr);
-}
-
-void cmServer::QueueRequest(const std::string& request)
-{
-  cmServerBase::QueueRequest(request);
-  this->PopOne();
+  this->WriteJsonObject(connection, hello, nullptr);
 }
 
 void cmServer::reportProgress(const char* msg, float progress, void* data)
@@ -227,7 +246,7 @@ bool cmServer::Serve(std::string* errorMessage)
   }
   assert(!this->Protocol);
 
-  return Connection->ProcessEvents(errorMessage);
+  return cmServerBase::Serve(errorMessage);
 }
 
 cmFileMonitor* cmServer::FileMonitor() const
@@ -235,7 +254,8 @@ cmFileMonitor* cmServer::FileMonitor() const
   return fileMonitor.get();
 }
 
-void cmServer::WriteJsonObject(const Json::Value& jsonValue,
+void cmServer::WriteJsonObject(cmConnection* connection,
+                               const Json::Value& jsonValue,
                                const DebugInfo* debug) const
 {
   Json::FastWriter writer;
@@ -269,7 +289,7 @@ void cmServer::WriteJsonObject(const Json::Value& jsonValue,
     }
   }
 
-  Connection->WriteData(std::string("\n") + kSTART_MAGIC + std::string("\n") +
+  connection->WriteData(std::string("\n") + kSTART_MAGIC + std::string("\n") +
                         result + kEND_MAGIC + std::string("\n"));
 }
 
@@ -308,7 +328,7 @@ void cmServer::WriteProgress(const cmServerRequest& request, int min,
   obj[kPROGRESS_MAXIMUM_KEY] = max;
   obj[kPROGRESS_CURRENT_KEY] = current;
 
-  this->WriteJsonObject(obj, nullptr);
+  this->WriteJsonObject(request.Connection, obj, nullptr);
 }
 
 void cmServer::WriteMessage(const cmServerRequest& request,
@@ -328,10 +348,11 @@ void cmServer::WriteMessage(const cmServerRequest& request,
     obj[kTITLE_KEY] = title;
   }
 
-  WriteJsonObject(obj, nullptr);
+  WriteJsonObject(request.Connection, obj, nullptr);
 }
 
-void cmServer::WriteParseError(const std::string& message) const
+void cmServer::WriteParseError(cmConnection* connection,
+                               const std::string& message) const
 {
   Json::Value obj = Json::objectValue;
   obj[kTYPE_KEY] = kERROR_TYPE;
@@ -339,10 +360,10 @@ void cmServer::WriteParseError(const std::string& message) const
   obj[kREPLY_TO_KEY] = "";
   obj[kCOOKIE_KEY] = "";
 
-  this->WriteJsonObject(obj, nullptr);
+  this->WriteJsonObject(connection, obj, nullptr);
 }
 
-void cmServer::WriteSignal(const std::string& name,
+void cmServer::WriteSignal(cmConnection* connection, const std::string& name,
                            const Json::Value& data) const
 {
   assert(data.isObject());
@@ -352,10 +373,11 @@ void cmServer::WriteSignal(const std::string& name,
   obj[kCOOKIE_KEY] = "";
   obj[kNAME_KEY] = name;
 
-  WriteJsonObject(obj, nullptr);
+  WriteJsonObject(connection, obj, nullptr);
 }
 
-void cmServer::WriteResponse(const cmServerResponse& response,
+void cmServer::WriteResponse(cmConnection* connection,
+                             const cmServerResponse& response,
                              const DebugInfo* debug) const
 {
   assert(response.IsComplete());
@@ -368,32 +390,27 @@ void cmServer::WriteResponse(const cmServerResponse& response,
     obj[kERROR_MESSAGE_KEY] = response.ErrorMessage();
   }
 
-  this->WriteJsonObject(obj, debug);
+  this->WriteJsonObject(connection, obj, debug);
 }
 
-void cmServer::OnNewConnection()
+void cmServer::OnConnected(cmConnection* connection)
 {
-  PrintHello();
+  PrintHello(connection);
 }
 
-void cmServer::OnEventsStart(uv_loop_t* loop)
+void cmServer::OnServeStart()
 {
-  cmServerBase::OnEventsStart(loop);
-  fileMonitor = std::make_shared<cmFileMonitor>(loop);
+  cmServerBase::OnServeStart();
+  fileMonitor = std::make_shared<cmFileMonitor>(GetLoop());
 }
 
-void cmServer::OnEventsStop(std::string* pString)
+void cmServer::OnServeStop(std::string* pString)
 {
-  cmServerBase::OnEventsStop(pString);
+  cmServerBase::OnServeStop(pString);
   if (fileMonitor) {
     fileMonitor->StopMonitoring();
     fileMonitor.reset();
   }
-}
-
-void cmServerBase::QueueRequest(const std::string& request)
-{
-  this->Queue.push_back(request);
 }
 
 bool cmServerBase::StartServeThread()
@@ -405,45 +422,73 @@ bool cmServerBase::StartServeThread()
   return true;
 }
 
-cmServerBase::~cmServerBase()
-{
-  uv_close(reinterpret_cast<uv_handle_t*>(&cbHandle), nullptr);
-  uv_close(reinterpret_cast<uv_handle_t*>(&cbPrepareHandle), nullptr);
-  Connection->TriggerShutdown();
-  ServeThread.join();
-}
-
 bool cmServerBase::Serve(std::string* errorMessage)
 {
-  return GetConnection()->ProcessEvents(errorMessage);
+  errorMessage->clear();
+
+  uv_signal_init(&Loop, &this->SIGINTHandler);
+  uv_signal_init(&Loop, &this->SIGHUPHandler);
+
+  this->SIGINTHandler.data = this;
+  this->SIGHUPHandler.data = this;
+
+  uv_signal_start(&this->SIGINTHandler, &on_signal, SIGINT);
+  uv_signal_start(&this->SIGHUPHandler, &on_signal, SIGHUP);
+
+  uv_check_init(&Loop, &cbHandle);
+  cbHandle.data = this;
+  uv_check_start(&cbHandle, &onLoop);
+
+  uv_prepare_init(&Loop, &cbPrepareHandle);
+  cbPrepareHandle.data = this;
+  uv_prepare_start(&cbPrepareHandle, &onLoop);
+
+  OnServeStart();
+
+  for (auto& connection : Connections) {
+    if (!connection->OnServeStart(errorMessage))
+      return false;
+  }
+
+  if (uv_run(&Loop, UV_RUN_DEFAULT) != 0) {
+    *errorMessage = "Internal Error: Event loop stopped in unclean state.";
+    OnServeStop(errorMessage);
+    return false;
+  }
+
+  for (auto& connection : Connections) {
+    if (!connection->OnServeStop(errorMessage))
+      return false;
+  }
+
+  OnServeStop(errorMessage);
+
+  return true;
 }
 
-void cmServerBase::OnNewConnection()
+void cmServerBase::OnConnected(cmConnection*)
 {
 }
 
 void cmServerBase::OnDisconnect()
 {
 }
-template <typename T>
-static void onLoop(T* handle)
-{
-  auto serverBase = reinterpret_cast<cmServerBase*>(handle->data);
-  serverBase->PopOne();
-}
-void cmServerBase::OnEventsStart(uv_loop_t* loop)
-{
-  uv_check_init(loop, &cbHandle);
-  cbHandle.data = this;
-  uv_check_start(&cbHandle, &onLoop);
 
-  uv_prepare_init(loop, &cbPrepareHandle);
-  cbPrepareHandle.data = this;
+void cmServerBase::OnServeStart()
+{
+  uv_signal_start(&this->SIGINTHandler, &on_signal, SIGINT);
+  uv_signal_start(&this->SIGHUPHandler, &on_signal, SIGHUP);
   uv_prepare_start(&cbPrepareHandle, &onLoop);
+  uv_check_start(&cbHandle, &onLoop);
 }
 
-void cmServerBase::OnEventsStop(std::string* pString)
+void cmServerBase::OnServeStop(std::string* pString)
 {
+  if (!uv_is_closing((const uv_handle_t*)&this->SIGINTHandler))
+    uv_signal_stop(&this->SIGINTHandler);
+  if (!uv_is_closing((const uv_handle_t*)&this->SIGHUPHandler))
+    uv_signal_stop(&this->SIGHUPHandler);
+  uv_prepare_stop(&cbPrepareHandle);
   uv_check_stop(&cbHandle);
 }
 
@@ -452,24 +497,50 @@ bool cmServerBase::OnSignal(int signum)
   return false;
 }
 
-cmConnection* cmServerBase::GetConnection()
-{
-  return Connection.get();
-}
-
 cmServerBase::cmServerBase(cmConnection* connection)
-  : Connection(connection)
 {
-  Connection->SetServer(this);
+  uv_loop_init(&Loop);
+  uv_async_init(&Loop, &WakeupLoop, 0);
+
+  uv_signal_init(&Loop, &this->SIGINTHandler);
+  uv_signal_init(&Loop, &this->SIGHUPHandler);
+
+  this->SIGINTHandler.data = this;
+  this->SIGHUPHandler.data = this;
+
+  uv_check_init(&Loop, &cbHandle);
+  cbHandle.data = this;
+
+  uv_prepare_init(&Loop, &cbPrepareHandle);
+  cbPrepareHandle.data = this;
+
+  AddNewConnection(connection);
 }
 
-void cmServerBase::PopOne()
+cmServerBase::~cmServerBase()
 {
-  if (this->Queue.empty()) {
-    return;
-  }
+  Connections.clear();
 
-  const std::string input = this->Queue.front();
-  this->Queue.erase(this->Queue.begin());
-  ProcessRequest(input);
+  uv_stop(&Loop);
+  uv_async_send(&WakeupLoop);
+  uv_walk(&Loop, on_walk_to_shutdown, NULL);
+
+  ServeThread.join();
+}
+
+void cmServerBase::AddNewConnection(cmConnection* ownedConnection)
+{
+  Connections.emplace_back(ownedConnection);
+  ownedConnection->SetServer(this);
+}
+
+void cmServerBase::ProcessOne()
+{
+  for (auto& connection : Connections)
+    connection->PopOne();
+}
+
+uv_loop_t* cmServerBase::GetLoop()
+{
+  return &Loop;
 }

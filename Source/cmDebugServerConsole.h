@@ -11,8 +11,9 @@ class cmDebugServerConsole : public cmDebugServer
 public:
   cmDebugServerConsole(cmDebugger& debugger);
   cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn);
-  void printPrompt();
-  virtual void ProcessRequest(const std::string& request) override;
+  void printPrompt(cmConnection* connection);
+  virtual void ProcessRequest(cmConnection* connection,
+                              const std::string& request) override;
 
   void OnChangeState() override;
 };

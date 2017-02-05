@@ -999,6 +999,9 @@ if(CMake_ENABLE_SERVER_MODE)
     cmServer.cxx cmServer.h
     cmServerConnection.cxx cmServerConnection.h
     cmServerProtocol.cxx cmServerProtocol.h
+    cmConnection.h cmConnection.cxx
+    cmPipeConnection.cxx cmPipeConnection.h
+    cmTcpIpConnection.cxx cmTcpIpConnection.h
     )
   target_link_libraries(CMakeServerLib CMakeLib)
   set_property(SOURCE cmcmd.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_SERVER_MODE=1)
