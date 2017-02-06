@@ -537,6 +537,12 @@ int main(void) {
   endif()
 
 #-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
+#Build YAJLlibrary.
+set(CMAKE_YAJL_LIBRARIES cmyajl)
+add_subdirectory(Utilities/cmyajl)
+CMAKE_SET_TARGET_FOLDER(cmyajl "Utilities/3rdParty")
+
+#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
 #Build XMLRPC library for CMake and CTest.
   if(CTEST_USE_XMLRPC)
     find_package(XMLRPC QUIET REQUIRED libwww-client)
