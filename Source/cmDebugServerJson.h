@@ -19,3 +19,5 @@ public:
 
   void OnConnected(cmConnection* connection) override;
 };
+
+std::unique_ptr<cmConnectionBufferStrategy> CreateJsonConnectionStrategy();

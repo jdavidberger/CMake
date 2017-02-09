@@ -5,11 +5,10 @@
 #include <string>
 #include <vector>
 
-#if defined(CMAKE_BUILD_WITH_CMAKE)
+#include "cmConnection.h"
 #include "cmPipeConnection.h"
 #include "cmTcpIpConnection.h"
 #include "cm_uv.h"
-#endif
 
 class cmServer;
 class cmServerBase;
