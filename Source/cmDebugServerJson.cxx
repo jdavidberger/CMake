@@ -12,10 +12,16 @@
 
 #include "cmyajl/include/yajl/yajl_parse.h"
 
+static int yajl_callback_start_map(void* ctx)
+{
+  size_t* jsonObjectDepth = (size_t*)ctx;
+  (*jsonObjectDepth)++;
+  return 1;
+}
 static int yajl_callback_end_map(void* ctx)
 {
-  bool* jsonObjectDone = (bool*)ctx;
-  *jsonObjectDone = true;
+  size_t* jsonObjectDepth = (size_t*)ctx;
+  (*jsonObjectDepth)--;
   return 1;
 }
 
@@ -23,7 +29,7 @@ class cmJsonBufferStrategy : public cmConnectionBufferStrategy
 {
   std::string readBuffer = "";
   yajl_handle parser;
-  bool jsonObjectDone = false;
+  size_t jsonObjectDepth = 0;
   yajl_callbacks callbacks;
 
 public:
@@ -31,7 +37,8 @@ public:
   {
     memset(&callbacks, 0, sizeof(callbacks));
     callbacks.yajl_end_map = yajl_callback_end_map;
-    parser = yajl_alloc(&callbacks, 0, &jsonObjectDone);
+    callbacks.yajl_start_map = yajl_callback_start_map;
+    parser = yajl_alloc(&callbacks, 0, &jsonObjectDepth);
 
     // yajl (as far as I know) doesn't have a function that
     // resets a parser, and alloc / free per message would
@@ -60,27 +67,41 @@ public:
         obj_end++;
         foundPotentialObjEnd = true;
       }
-      yajl_parse(parser, (const unsigned char*)rawBuffer.c_str(), obj_end);
+      yajl_status status =
+        yajl_parse(parser, (const unsigned char*)rawBuffer.c_str(), obj_end);
+      if (status != yajl_status_ok) {
+        unsigned char error[128] = { 0 };
+        auto ymsg = yajl_get_error(parser, 1, error, 128);
+        std::string exception_msg = std::to_string(status) + ": " +
+          std::string((const char*)ymsg) + (const char*)error;
+        yajl_free_error(parser, ymsg);
+        throw std::runtime_error(exception_msg);
+      }
       size_t burnt = yajl_get_bytes_consumed(parser);
-      readBuffer.insert(readBuffer.end(), rawBuffer.begin(),
-                        rawBuffer.begin() + burnt);
+      readBuffer.insert(
+        readBuffer.end(), rawBuffer.begin(), rawBuffer.begin() + burnt);
       rawBuffer.erase(rawBuffer.begin(), rawBuffer.begin() + burnt);
-    } while (!jsonObjectDone && foundPotentialObjEnd);
+    } while (jsonObjectDepth != 0 && foundPotentialObjEnd &&
+             !rawBuffer.empty());
 
-    if (jsonObjectDone) {
-      jsonObjectDone = false;
+    if (jsonObjectDepth == 0 && !readBuffer.empty()) {
 
       // Since this object is done, put a comma before the next object to
       // convince the parser is seeing an array of objects
       yajl_parse(parser, (const unsigned char*)",", 1);
       std::string rtn;
       rtn.swap(readBuffer);
-      return rtn;
     }
 
     return "";
   }
 };
+
+std::unique_ptr<cmConnectionBufferStrategy> CreateJsonConnectionStrategy()
+{
+  return std::unique_ptr<cmConnectionBufferStrategy>(
+    new cmJsonBufferStrategy());
+}
 
 cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger, cmConnection* conn)
   : cmDebugServer(debugger, conn)

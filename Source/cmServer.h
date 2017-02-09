@@ -9,10 +9,9 @@
 #include "cmConnection.h"
 #include "cmDebugger.h"
 #include "cmServerConnection.h"
-#include "cm_jsoncpp_value.h"
-#include "cm_uv.h"
-
 #endif
+#include "cm_uv.h"
+#include "cm_jsoncpp_value.h"
 
 #include <thread>
 
