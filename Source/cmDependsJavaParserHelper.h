@@ -37,7 +37,8 @@ public:
 
   // For the lexer:
   void AllocateParserType(cmDependsJavaParserHelper::ParserType* pt,
-                          const char* str, int len = 0);
+                          const char* str,
+                          int len = 0);
 
   int LexInput(char* buf, int maxlen);
   void Error(const char* str);
@@ -67,7 +68,8 @@ private:
     std::string Name;
     std::vector<CurrentClass> NestedClasses;
     void AddFileNamesForPrinting(std::vector<std::string>* files,
-                                 const char* prefix, const char* sep) const;
+                                 const char* prefix,
+                                 const char* sep) const;
   };
   std::string CurrentPackage;
   std::string::size_type InputBufferPos;
