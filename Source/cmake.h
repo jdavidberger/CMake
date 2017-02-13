@@ -242,6 +242,9 @@ public:
    */
   int GetSystemInformation(std::vector<std::string>&);
 
+  ///! Set up the internal debugger with the given connection string
+  void SetupDebugger(const std::string& connection);
+
   ///! Parse command line arguments
   void SetArgs(const std::vector<std::string>&,
                bool directoriesSetBefore = false);

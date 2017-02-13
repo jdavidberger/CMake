@@ -23,7 +23,7 @@
 #include <fstream>
 #include <iostream>
 
-template <typename T>
+template<typename T>
 static void onLoop(T* handle)
 {
   auto serverBase = reinterpret_cast<cmServerBase*>(handle->data);
@@ -94,8 +94,11 @@ void cmServer::ProcessRequest(cmConnection* connection,
     debug->PrintStatistics = debugValue["showStats"].asBool();
   }
 
-  const cmServerRequest request(this, connection, value[kTYPE_KEY].asString(),
-                                value[kCOOKIE_KEY].asString(), value);
+  const cmServerRequest request(this,
+                                connection,
+                                value[kTYPE_KEY].asString(),
+                                value[kCOOKIE_KEY].asString(),
+                                value);
 
   if (request.Type == "") {
     cmServerResponse response(request);
@@ -109,11 +112,11 @@ void cmServer::ProcessRequest(cmConnection* connection,
   if (this->Protocol) {
     this->Protocol->CMakeInstance()->SetProgressCallback(
       reportProgress, const_cast<cmServerRequest*>(&request));
-    this->WriteResponse(connection, this->Protocol->Process(request),
-                        debug.get());
+    this->WriteResponse(
+      connection, this->Protocol->Process(request), debug.get());
   } else {
-    this->WriteResponse(connection, this->SetProtocolVersion(request),
-                        debug.get());
+    this->WriteResponse(
+      connection, this->SetProtocolVersion(request), debug.get());
   }
 }
 
@@ -168,8 +171,10 @@ void cmServer::reportProgress(const char* msg, float progress, void* data)
   }
 }
 
-void cmServer::reportMessage(const char* msg, const char* title,
-                             bool& /* cancel */, void* data)
+void cmServer::reportMessage(const char* msg,
+                             const char* title,
+                             bool& /* cancel */,
+                             void* data)
 {
   const cmServerRequest* request = static_cast<const cmServerRequest*>(data);
   assert(request);
@@ -294,7 +299,9 @@ void cmServer::WriteJsonObject(cmConnection* connection,
 }
 
 cmServerProtocol* cmServer::FindMatchingProtocol(
-  const std::vector<cmServerProtocol*>& protocols, int major, int minor)
+  const std::vector<cmServerProtocol*>& protocols,
+  int major,
+  int minor)
 {
   cmServerProtocol* bestMatch = nullptr;
   for (auto protocol : protocols) {
@@ -312,8 +319,10 @@ cmServerProtocol* cmServer::FindMatchingProtocol(
   return minor < 0 ? bestMatch : nullptr;
 }
 
-void cmServer::WriteProgress(const cmServerRequest& request, int min,
-                             int current, int max,
+void cmServer::WriteProgress(const cmServerRequest& request,
+                             int min,
+                             int current,
+                             int max,
                              const std::string& message) const
 {
   assert(min <= current && current <= max);
@@ -363,7 +372,8 @@ void cmServer::WriteParseError(cmConnection* connection,
   this->WriteJsonObject(connection, obj, nullptr);
 }
 
-void cmServer::WriteSignal(cmConnection* connection, const std::string& name,
+void cmServer::WriteSignal(cmConnection* connection,
+                           const std::string& name,
                            const Json::Value& data) const
 {
   assert(data.isObject());
@@ -488,7 +498,8 @@ void cmServerBase::StartShutDown()
     connection->OnServerShuttingDown();
 
   uv_stop(&Loop);
-  uv_async_send(&WakeupLoop);
+  if (!uv_is_closing((const uv_handle_t*)&WakeupLoop))
+    uv_async_send(&WakeupLoop);
   uv_walk(&Loop, on_walk_to_shutdown, NULL);
 }
 

@@ -13,12 +13,14 @@ class cmRemoteDebugger_impl : public cmDebugger
 {
   cmake& CMakeInstance;
   State::t state = State::Unknown;
-  std::mutex m;
-  std::condition_variable cv;
+  std::recursive_mutex m;
+  std::condition_variable_any cv;
   bool breakPending = true; // Break on connection
+
+  std::mutex breakpointMutex;
   std::vector<cmBreakpoint> breakpoints;
   int32_t breakDepth = -1;
-  std::unique_lock<std::mutex> Lock;
+  std::unique_lock<std::recursive_mutex> Lock;
 
 public:
   ~cmRemoteDebugger_impl()
@@ -97,15 +99,18 @@ public:
         breakPending = true;
     }
 
-    if (breakPending) {
-      PauseExecution();
+    {
+      std::lock_guard<std::mutex> l(breakpointMutex);
+      for (auto& bp : breakpoints) {
+        if (bp.matches(context)) {
+          breakPending = true;
+          break;
+        }
+      }
     }
 
-    for (auto& bp : breakpoints) {
-      if (bp.matches(context)) {
-        PauseExecution();
-        break;
-      }
+    if (breakPending) {
+      PauseExecution();
     }
   }
 
@@ -117,6 +122,7 @@ public:
   breakpoint_id SetBreakpoint(const std::string& fileName,
                               size_t line) override
   {
+    std::lock_guard<std::mutex> l(breakpointMutex);
     breakpoints.emplace_back(fileName, line);
     return breakpoints.size() - 1;
   }
@@ -125,9 +131,8 @@ public:
 
   void ClearBreakpoint(breakpoint_id id) override
   {
-    if (breakpoints.size() > id) {
-      breakpoints[id].file = "";
-    }
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    breakpoints.erase(breakpoints.begin() + id);
   }
 
   void Continue() override { cv.notify_all(); }
@@ -154,13 +159,20 @@ public:
 
   void ClearBreakpoint(const std::string& fileName, size_t line) override
   {
-    for (auto& br : breakpoints) {
-      if (br.matches(fileName, line))
-        br.file = "";
-    }
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    auto pred = [&](const cmBreakpoint br) {
+      return br.matches(fileName, line);
+    };
+    breakpoints.erase(
+      std::remove_if(breakpoints.begin(), breakpoints.end(), pred),
+      breakpoints.end());
   }
 
-  void ClearAllBreakpoints() override { breakpoints.clear(); }
+  void ClearAllBreakpoints() override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    breakpoints.clear();
+  }
 
   State::t CurrentState() const override { return this->state; }
 
@@ -206,7 +218,7 @@ bool cmBreakpoint::matches(const std::string& testFile, size_t testLine) const
   return testFile.find(file) != std::string::npos;
 }
 
-cmPauseContext::cmPauseContext(std::mutex& m, cmDebugger* debugger)
+cmPauseContext::cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger)
   : Debugger(debugger)
   , Lock(m, std::try_to_lock)
 {

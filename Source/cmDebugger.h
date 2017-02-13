@@ -37,10 +37,10 @@ public:
 class cmPauseContext
 {
   cmDebugger* Debugger = 0;
-  std::unique_lock<std::mutex> Lock;
+  std::unique_lock<std::recursive_mutex> Lock;
 
 public:
-  cmPauseContext(std::mutex& m, cmDebugger* debugger);
+  cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger);
   operator bool() const;
   virtual cmListFileBacktrace GetBacktrace() const;
   virtual cmMakefile* GetMakefile() const;

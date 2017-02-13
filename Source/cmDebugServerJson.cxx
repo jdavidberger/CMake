@@ -91,6 +91,7 @@ public:
       yajl_parse(parser, (const unsigned char*)",", 1);
       std::string rtn;
       rtn.swap(readBuffer);
+      return rtn;
     }
 
     return "";
@@ -134,35 +135,36 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
     Debugger.ClearBreakpoint(value["File"].asString(), value["Line"].asInt());
   } else if (request.find("AddBreakpoint") == 0) {
     Debugger.SetBreakpoint(value["File"].asString(), value["Line"].asInt());
-  }
+  } else {
 
-  auto ctx = Debugger.PauseContext();
-  if (!ctx)
-    return;
+    auto ctx = Debugger.PauseContext();
+    if (!ctx)
+      return;
 
-  if (request == "Continue") {
-    ctx.Continue();
-  } else if (request == "StepIn") {
-    ctx.StepIn();
-  } else if (request == "StepOut") {
-    ctx.StepOut();
-  } else if (request == "StepOver") {
-    ctx.Step();
-  } else if (request.find("Evaluate") == 0) {
-    auto requestVal = value["Request"].asString();
-    const char* v = 0;
-    if (!requestVal.empty() && requestVal[0] == '"' &&
-        requestVal.back() == '"')
-      v = ctx.GetMakefile()->ExpandVariablesInString(requestVal);
-    else
-      v = ctx.GetMakefile()->GetDefinition(requestVal);
+    if (request == "Continue") {
+      ctx.Continue();
+    } else if (request == "StepIn") {
+      ctx.StepIn();
+    } else if (request == "StepOut") {
+      ctx.StepOut();
+    } else if (request == "StepOver") {
+      ctx.Step();
+    } else if (request.find("Evaluate") == 0) {
+      auto requestVal = value["Request"].asString();
+      const char* v = 0;
+      if (!requestVal.empty() && requestVal[0] == '"' &&
+          requestVal.back() == '"')
+        v = ctx.GetMakefile()->ExpandVariablesInString(requestVal);
+      else
+        v = ctx.GetMakefile()->GetDefinition(requestVal);
 
-    value.removeMember("Command");
-    if (v)
-      value["Response"] = std::string(v);
-    else
-      value["Response"] = false;
-    connection->WriteData(value.toStyledString());
+      value.removeMember("Command");
+      if (v)
+        value["Response"] = std::string(v);
+      else
+        value["Response"] = false;
+      connection->WriteData(value.toStyledString());
+    }
   }
 }
 
@@ -171,6 +173,7 @@ void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
 
   std::string state = "";
   Json::Value value;
+  value["PID"] = ::getpid();
   switch (Debugger.CurrentState()) {
     case cmDebugger::State::Running:
       value["State"] = "Running";
