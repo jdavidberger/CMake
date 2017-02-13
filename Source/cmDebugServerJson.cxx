@@ -125,32 +125,9 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
   }
   auto request = value["Command"].asString();
 
-  if (request == "Continue") {
-    Debugger.Continue();
-  } else if (request == "Break") {
+  if (request == "Break") {
     Debugger.Break();
     SendStateUpdate(connection);
-  } else if (request == "StepIn") {
-    Debugger.StepIn();
-  } else if (request == "StepOut") {
-    Debugger.StepOut();
-  } else if (request == "StepOver") {
-    Debugger.Step();
-  } else if (request.find("Evaluate") == 0) {
-    auto requestVal = value["Request"].asString();
-    const char* v = 0;
-    if (!requestVal.empty() && requestVal[0] == '"' &&
-        requestVal.back() == '"')
-      v = Debugger.GetMakefile()->ExpandVariablesInString(requestVal);
-    else
-      v = Debugger.GetMakefile()->GetDefinition(requestVal);
-
-    value.removeMember("Command");
-    if (v)
-      value["Response"] = std::string(v);
-    else
-      value["Response"] = false;
-    connection->WriteData(value.toStyledString());
   } else if (request.find("ClearBreakpoints") == 0) {
     Debugger.ClearAllBreakpoints();
   } else if (request.find("RemoveBreakpoint") == 0) {
@@ -158,11 +135,39 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
   } else if (request.find("AddBreakpoint") == 0) {
     Debugger.SetBreakpoint(value["File"].asString(), value["Line"].asInt());
   }
+
+  auto ctx = Debugger.PauseContext();
+  if (!ctx)
+    return;
+
+  if (request == "Continue") {
+    ctx.Continue();
+  } else if (request == "StepIn") {
+    ctx.StepIn();
+  } else if (request == "StepOut") {
+    ctx.StepOut();
+  } else if (request == "StepOver") {
+    ctx.Step();
+  } else if (request.find("Evaluate") == 0) {
+    auto requestVal = value["Request"].asString();
+    const char* v = 0;
+    if (!requestVal.empty() && requestVal[0] == '"' &&
+        requestVal.back() == '"')
+      v = ctx.GetMakefile()->ExpandVariablesInString(requestVal);
+    else
+      v = ctx.GetMakefile()->GetDefinition(requestVal);
+
+    value.removeMember("Command");
+    if (v)
+      value["Response"] = std::string(v);
+    else
+      value["Response"] = false;
+    connection->WriteData(value.toStyledString());
+  }
 }
 
 void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
 {
-  auto currentLine = Debugger.CurrentLine();
 
   std::string state = "";
   Json::Value value;
@@ -174,49 +179,53 @@ void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
       value["State"] = "Paused";
       Json::Value back(Json::arrayValue);
 
-      auto backtrace = Debugger.GetBacktrace();
-      int id = 0;
-      while (!backtrace.Top().FilePath.empty()) {
-        auto line = Json::Value::Int(backtrace.Top().Line);
-        if (line != 0) {
-          Json::Value frame(Json::objectValue);
-          frame["ID"] = id++;
-          frame["File"] = backtrace.Top().FilePath;
-          frame["Line"] = line;
-          frame["Name"] = backtrace.Top().Name;
+      if (auto ctx = Debugger.PauseContext()) {
+        auto currentLine = ctx.CurrentLine();
+        auto backtrace = ctx.GetBacktrace();
+        int id = 0;
+        while (!backtrace.Top().FilePath.empty()) {
+          auto line = Json::Value::Int(backtrace.Top().Line);
+          if (line != 0) {
+            Json::Value frame(Json::objectValue);
+            frame["ID"] = id++;
+            frame["File"] = backtrace.Top().FilePath;
+            frame["Line"] = line;
+            frame["Name"] = backtrace.Top().Name;
 
-          switch (backtrace.GetBottom().GetType()) {
-            case cmStateEnums::BaseType:
-              frame["Type"] = "BaseType";
-              break;
-            case cmStateEnums::BuildsystemDirectoryType:
-              frame["Type"] = "BuildsystemDirectoryType";
-              break;
-            case cmStateEnums::FunctionCallType:
-              frame["Type"] = "FunctionCallType";
-              break;
-            case cmStateEnums::MacroCallType:
-              frame["Type"] = "MacroCallType";
-              break;
-            case cmStateEnums::IncludeFileType:
-              frame["Type"] = "IncludeFileType";
-              break;
-            case cmStateEnums::InlineListFileType:
-              frame["Type"] = "InlineListFileType";
-              break;
-            case cmStateEnums::PolicyScopeType:
-              frame["Type"] = "PolicyScopeType";
-              break;
-            case cmStateEnums::VariableScopeType:
-              frame["Type"] = "VariableScopeType";
-              break;
+            switch (backtrace.GetBottom().GetType()) {
+              case cmStateEnums::BaseType:
+                frame["Type"] = "BaseType";
+                break;
+              case cmStateEnums::BuildsystemDirectoryType:
+                frame["Type"] = "BuildsystemDirectoryType";
+                break;
+              case cmStateEnums::FunctionCallType:
+                frame["Type"] = "FunctionCallType";
+                break;
+              case cmStateEnums::MacroCallType:
+                frame["Type"] = "MacroCallType";
+                break;
+              case cmStateEnums::IncludeFileType:
+                frame["Type"] = "IncludeFileType";
+                break;
+              case cmStateEnums::InlineListFileType:
+                frame["Type"] = "InlineListFileType";
+                break;
+              case cmStateEnums::PolicyScopeType:
+                frame["Type"] = "PolicyScopeType";
+                break;
+              case cmStateEnums::VariableScopeType:
+                frame["Type"] = "VariableScopeType";
+                break;
+            }
+
+            back.append(frame);
           }
-
-          back.append(frame);
+          backtrace = backtrace.Pop();
         }
-        backtrace = backtrace.Pop();
+        value["Backtrace"] = back;
       }
-      value["Backtrace"] = back;
+
     } break;
     case cmDebugger::State::Unknown:
       value["State"] = "Unknown";

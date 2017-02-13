@@ -42,27 +42,10 @@ cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger)
 void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
                                           const std::string& request)
 {
-  if (request == "c") {
-    Debugger.Continue();
-  } else if (request == "b") {
+  if (request == "b") {
     Debugger.Break();
   } else if (request == "q") {
     exit(0);
-  } else if (request == "s") {
-    Debugger.Step();
-  } else if (request == "bt") {
-    auto bt = Debugger.GetBacktrace();
-    std::stringstream ss;
-    bt.PrintCallStack(ss);
-    connection->WriteData(ss.str());
-  } else if (request.find("print ") == 0) {
-    auto whatToPrint = request.substr(strlen("print "));
-    auto val = Debugger.GetMakefile()->GetDefinition(whatToPrint);
-    if (val)
-      connection->WriteData("$ " + whatToPrint + " = " + std::string(val) +
-                            "\n");
-    else
-      connection->WriteData(whatToPrint + " isn't set.\n");
   } else if (request.find("info br") == 0) {
     std::stringstream ss;
     auto& bps = Debugger.GetBreakpoints();
@@ -87,6 +70,33 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
       connection->WriteData("Cleared breakpoint " + std::to_string(clearWhat) +
                             "\n");
     }
+  }
+
+  auto ctx = Debugger.PauseContext();
+  if (!ctx)
+    return;
+
+  if (request.find("fin") == 0) {
+    ctx.StepOut();
+  } else if (request == "c") {
+    ctx.Continue();
+  } else if (request == "n") {
+    ctx.Step();
+  } else if (request == "s") {
+    ctx.StepIn();
+  } else if (request == "bt") {
+    auto bt = ctx.GetBacktrace();
+    std::stringstream ss;
+    bt.PrintCallStack(ss);
+    connection->WriteData(ss.str());
+  } else if (request.find("print ") == 0) {
+    auto whatToPrint = request.substr(strlen("print "));
+    auto val = ctx.GetMakefile()->GetDefinition(whatToPrint);
+    if (val)
+      connection->WriteData("$ " + whatToPrint + " = " + std::string(val) +
+                            "\n");
+    else
+      connection->WriteData(whatToPrint + " isn't set.\n");
   } else if (request.find("br") == 0) {
     auto space = request.find(' ');
     if (space != std::string::npos) {
@@ -99,7 +109,7 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
         bpSpecifier = bpSpecifier.substr(0, colonPlacement);
       } else if (isdigit(*bpSpecifier.c_str())) {
         line = std::stoi(bpSpecifier);
-        bpSpecifier = Debugger.CurrentLine().FilePath;
+        bpSpecifier = ctx.CurrentLine().FilePath;
       }
 
       Debugger.SetBreakpoint(bpSpecifier, line);
@@ -107,6 +117,7 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
                             std::to_string(line) + "\n");
     }
   }
+
   printPrompt(connection);
 }
 void cmDebugServerConsole::printPrompt(cmConnection* connection)
@@ -118,21 +129,26 @@ void cmDebugServerConsole::OnChangeState()
   cmDebuggerListener::OnChangeState();
 
   for (auto& Connection : Connections) {
-    auto currentLine = Debugger.CurrentLine();
+
     switch (Debugger.CurrentState()) {
       case cmDebugger::State::Running:
         Connection->WriteData("Running...\n");
         break;
-      case cmDebugger::State::Paused:
-        Connection->WriteData("Paused at " + currentLine.FilePath + ":" +
-                              std::to_string(currentLine.Line) + " (" +
-                              currentLine.Name + ")\n");
+      case cmDebugger::State::Paused: {
+        auto ctx = Debugger.PauseContext();
+        if (ctx) {
+          auto currentLine = ctx.CurrentLine();
+          Connection->WriteData("Paused at " + currentLine.FilePath + ":" +
+                                std::to_string(currentLine.Line) + " (" +
+                                currentLine.Name + ")\n");
+        } else {
+          Connection->WriteData("Paused at indeterminate state");
+        }
         printPrompt(Connection.get());
-        break;
+
+      } break;
       case cmDebugger::State::Unknown:
-        Connection->WriteData("Unknown at " + currentLine.FilePath + ":" +
-                              std::to_string(currentLine.Line) + " (" +
-                              currentLine.Name + ")\n");
+        Connection->WriteData("Unknown state\n");
         printPrompt(Connection.get());
         break;
     }
