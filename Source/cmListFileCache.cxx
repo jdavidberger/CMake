@@ -432,6 +432,9 @@ void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
 size_t cmListFileBacktrace::Depth() const
 {
   size_t depth = 0;
+  if(this->Cur == 0)
+    return 0;
+
   for (Entry* i = this->Cur->Up; i; i = i->Up) {
     depth++;
   }
