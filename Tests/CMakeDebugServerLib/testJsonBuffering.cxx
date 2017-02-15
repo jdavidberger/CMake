@@ -3,9 +3,9 @@
 int testJsonBuffering(int, char** const)
 {
   std::vector<std::string> messages = {
-    "{ \"test\": 10}",
-    "{ \"test\": { \"test2\": false} }",
+    "{ \"test\": 10}", "{ \"test\": { \"test2\": false} }",
     "{ \"test\": [1, 2, 3] }",
+    "{ \"a\": { \"1\": {}, \n\n\n \"2\":[] \t\t\t\t}}"
   };
 
   std::string fullMessage;

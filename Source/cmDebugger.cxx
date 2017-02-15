@@ -9,33 +9,67 @@
 #include <condition_variable>
 #include <set>
 
-class cmRemoteDebugger_impl : public cmDebugger
+/**
+ * Actual debugger implementation.
+ */
+class cmDebugger_impl : public cmDebugger
 {
   cmake& CMakeInstance;
   State::t state = State::Unknown;
+
+  /***
+   * The main thread atomics used to control execution. We use a recursive
+   * mutex here so that we don't have to worry
+   * about juggling the mutex when we execute listener's callbacks. This allows
+   * users to get a pause context even
+   * within a callback.
+   *
+   * The long and short of it is that the mutex is almost always locked, and
+   * only goes into cv.wait when some break
+   * condition is hit.
+   */
   std::recursive_mutex m;
   std::condition_variable_any cv;
-  bool breakPending = true; // Break on connection
-
-  std::mutex breakpointMutex;
-  std::vector<cmBreakpoint> breakpoints;
-  int32_t breakDepth = -1;
   std::unique_lock<std::recursive_mutex> Lock;
 
+  /**
+   * This flag sets up the next instruction to go into the pause state.
+   */
+  bool breakPending = true; // Break on connection
+
+  /***
+   * We run the breakpoints off of a separate mutex so that they can be set and
+   * cleared while running
+   */
+  std::mutex breakpointMutex;
+  std::vector<cmBreakpoint> breakpoints;
+
+  /***
+   * When breakDepth isn't -1, we check the current stack size on execution and
+   * when the stack size is
+   * equal to that breakDepth we set breakPending. This makes step in / step
+   * out functionality divorced
+   * from understanding anything about the actual commands.
+   */
+  int32_t breakDepth = -1;
+
+  std::set<cmDebuggerListener*> listeners;
+  cmListFileContext currentLocation;
+
 public:
-  ~cmRemoteDebugger_impl()
+  ~cmDebugger_impl()
   {
     for (auto& s : listeners) {
       delete s;
     }
     listeners.clear();
   }
-  cmRemoteDebugger_impl(cmake& cmakeInstance)
+  cmDebugger_impl(cmake& cmakeInstance)
     : CMakeInstance(cmakeInstance)
     , Lock(m)
   {
   }
-  std::set<cmDebuggerListener*> listeners;
+
   void AddListener(cmDebuggerListener* listener) override
   {
     listeners.insert(listener);
@@ -66,7 +100,6 @@ public:
     }
   }
 
-  cmListFileContext currentLocation;
   virtual cmListFileContext CurrentLine() const override
   {
     return currentLocation;
@@ -93,12 +126,15 @@ public:
     state = State::Running;
     currentLocation = context;
 
+    // Step in / Step out logic. We have a target
+    // stack depth, and when we hit it, pause.
     if (breakDepth != -1) {
       auto currentDepth = GetBacktrace().Depth();
       if (currentDepth == breakDepth)
         breakPending = true;
     }
 
+    // Breakpoint detection
     {
       std::lock_guard<std::mutex> l(breakpointMutex);
       for (auto& bp : breakpoints) {
@@ -109,6 +145,8 @@ public:
       }
     }
 
+    // If a break is pending, act on it.
+    // Note that we
     if (breakPending) {
       PauseExecution();
     }
@@ -185,7 +223,7 @@ public:
 
 cmDebugger* cmDebugger::Create(cmake& global)
 {
-  return new cmRemoteDebugger_impl(global);
+  return new cmDebugger_impl(global);
 }
 
 cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
@@ -194,13 +232,13 @@ cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
 }
 
 cmBreakpoint::cmBreakpoint(const std::string& file, size_t line)
-  : file(file)
-  , line(line)
+  : File(file)
+  , Line(line)
 {
 }
 cmBreakpoint::operator bool() const
 {
-  return !file.empty();
+  return !File.empty();
 }
 inline bool cmBreakpoint::matches(const cmListFileContext& ctx) const
 {
@@ -209,13 +247,13 @@ inline bool cmBreakpoint::matches(const cmListFileContext& ctx) const
 
 bool cmBreakpoint::matches(const std::string& testFile, size_t testLine) const
 {
-  if (file.empty())
+  if (File.empty())
     return false;
 
-  if (line != testLine && line != (size_t)-1)
+  if (Line != testLine && Line != (size_t)-1)
     return false;
 
-  return testFile.find(file) != std::string::npos;
+  return testFile.find(File) != std::string::npos;
 }
 
 cmPauseContext::cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger)

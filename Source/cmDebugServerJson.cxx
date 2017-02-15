@@ -1,16 +1,11 @@
 #include "cmDebugServerJson.h"
 #include "cmMakefile.h"
-#include "cmServerConnection.h"
 #include <cmyajl/include/yajl/yajl_parse.h>
+#include <zconf.h>
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cmConnection.h"
-#include "cmTcpIpConnection.h"
 #include "cm_jsoncpp_reader.h"
-#include "cm_jsoncpp_value.h"
 #endif
-
-#include "cmyajl/include/yajl/yajl_parse.h"
 
 static int yajl_callback_start_map(void* ctx)
 {
@@ -25,6 +20,11 @@ static int yajl_callback_end_map(void* ctx)
   return 1;
 }
 
+/***
+ * Uses YAJL to stream in JSON. We keep the definition in this
+ * compilation unit so nothing else gets exposed to the YAJL
+ * internals.
+ */
 class cmJsonBufferStrategy : public cmConnectionBufferStrategy
 {
   std::string readBuffer = "";
@@ -78,8 +78,8 @@ public:
         throw std::runtime_error(exception_msg);
       }
       size_t burnt = yajl_get_bytes_consumed(parser);
-      readBuffer.insert(
-        readBuffer.end(), rawBuffer.begin(), rawBuffer.begin() + burnt);
+      readBuffer.insert(readBuffer.end(), rawBuffer.begin(),
+                        rawBuffer.begin() + burnt);
       rawBuffer.erase(rawBuffer.begin(), rawBuffer.begin() + burnt);
     } while (jsonObjectDepth != 0 && foundPotentialObjEnd &&
              !rawBuffer.empty());
@@ -121,9 +121,9 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
   Json::Reader reader;
   Json::Value value;
   if (!reader.parse(jsonRequest, value)) {
-
     return;
   }
+
   auto request = value["Command"].asString();
 
   if (request == "Break") {

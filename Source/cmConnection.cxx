@@ -116,20 +116,15 @@ void cmConnection::ReadData(const std::string& data)
   }
 }
 
-void cmConnection::PopOne()
+void cmConnection::ProcessNextRequest()
 {
   if (this->Queue.empty()) {
     return;
   }
 
   const std::string input = this->Queue.front();
-  this->Queue.erase(this->Queue.begin());
+  this->Queue.pop_front();
   Server->ProcessRequest(this, input);
-}
-
-void cmConnection::ProcessNextRequest()
-{
-  PopOne();
 }
 
 void cmConnection::SetServer(cmServerBase* s)
