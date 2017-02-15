@@ -242,8 +242,10 @@ public:
    */
   int GetSystemInformation(std::vector<std::string>&);
 
+#if defined(HAVE_DEBUG_SERVER)
   ///! Set up the internal debugger with the given connection string
   void SetupDebugger(const std::string& connection);
+#endif
 
   ///! Parse command line arguments
   void SetArgs(const std::vector<std::string>&,
