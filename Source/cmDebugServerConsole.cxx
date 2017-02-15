@@ -51,7 +51,7 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
     auto& bps = Debugger.GetBreakpoints();
     for (unsigned i = 0; i < bps.size(); i++) {
       if (bps[i]) {
-        ss << i << " break at " << bps[i].file << ":" << bps[i].line
+        ss << i << " break at " << bps[i].File << ":" << bps[i].Line
            << std::endl;
       }
     }

@@ -6,6 +6,7 @@ include_directories(
 
 set(CMakeDebugServerLib_TESTS
   testJsonBuffering
+  testServerBuffering
   )
 
 create_test_sourcelist(CMakeLib_TEST_SRCS CMakeDebugServerLibTests.cxx ${CMakeDebugServerLib_TESTS})

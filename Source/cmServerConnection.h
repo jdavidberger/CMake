@@ -15,6 +15,15 @@ class cmServerBase;
 class cmFileMonitor;
 class LoopGuard;
 
+/***
+ * This connection buffer strategy accepts messages in the form of
+ * [== "CMake Server" ==[
+{
+  ... some JSON message ...
+}
+]== "CMake Server" ==]
+ * and only passes on the core json; it discards the envelope.
+ */
 class cmServerBufferStrategy : public cmConnectionBufferStrategy
 {
 public:
@@ -24,6 +33,9 @@ private:
   std::string RequestBuffer;
 };
 
+/***
+ * Generic connection over std io interfaces -- tty
+ */
 class cmStdIoConnection : public cmConnection
 {
 public:
@@ -48,6 +60,10 @@ private:
   InOutUnion Output;
 };
 
+/***
+ * These specific connections use the cmake server
+ * buffering strategy.
+ */
 class cmServerStdIoConnection : public cmStdIoConnection
 {
 public:

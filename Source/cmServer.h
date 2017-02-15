@@ -10,8 +10,8 @@
 #include "cmDebugger.h"
 #include "cmServerConnection.h"
 #endif
-#include "cm_uv.h"
 #include "cm_jsoncpp_value.h"
+#include "cm_uv.h"
 
 #include <thread>
 
@@ -21,6 +21,11 @@ class cmServerProtocol;
 class cmServerRequest;
 class cmServerResponse;
 
+/***
+ * This essentially hold and manages a libuv event queue and responds to
+ * messages
+ * on any of its connections.
+ */
 class cmServerBase
 {
 public:
@@ -28,15 +33,39 @@ public:
   virtual ~cmServerBase();
 
   virtual void AddNewConnection(cmConnection* ownedConnection);
-  virtual void ProcessOne();
+
+  /***
+   * Called to force the server to service one request per connection
+   * We don't do just the first one we see otherwise we could starve
+   * connections based on their place in the connection list.
+   */
+  virtual void ProcessOneRequestPerConnection();
+
+  /***
+   * The main override responsible for tailoring behavior towards
+   * whatever the given server is supposed to do
+   *
+   * This should almost always be called by the given connections
+   * directly.
+   *
+   * @param connection The connectiont the request was received on
+   * @param request The actual request
+   */
   virtual void ProcessRequest(cmConnection* connection,
                               const std::string& request) = 0;
   virtual void OnConnected(cmConnection* connection);
   virtual void OnDisconnect();
 
+  /***
+   * Start a dedicated thread. If this is used to start the server, it will
+   * join on the
+   * servers dtor.
+   */
   virtual bool StartServeThread();
-
   virtual bool Serve(std::string* errorMessage);
+
+  // Notification from any connection that it received more data to
+  // process. It can safely be called spuriously.
   virtual void NotifyDataQueued();
 
   virtual void OnServeStart();
@@ -53,24 +82,21 @@ protected:
   std::thread ServeThread;
 
   uv_loop_t Loop;
-  uv_async_t WakeupLoop;
+
   uv_signal_t SIGINTHandler;
   uv_signal_t SIGHUPHandler;
-
-  typedef union
-  {
-    uv_tty_t tty;
-    uv_pipe_t pipe;
-  } InOutUnion;
-
-  InOutUnion Input;
-  InOutUnion Output;
-  uv_stream_t* InputStream = nullptr;
-  uv_stream_t* OutputStream = nullptr;
 
   /** Note -- We run the same callback in prepare and check to properly handle
                   deferred call
   */
+
+  // TODO: Currently the async wakes up the loop and the check / prepare
+  // callbacks
+  // actually do the processing if there is anything to process. This is likely
+  // unneeded, we could probably just use the async CB for that.
+
+  // Semaphore used to wake up the thread to do some action
+  uv_async_t WakeupLoop;
   uv_check_t cbHandle;
   uv_prepare_t cbPrepareHandle;
 };
