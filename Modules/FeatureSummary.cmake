@@ -44,7 +44,7 @@ The global property :variable:`FeatureSummary_REQUIRED_PKG_TYPES` defines which
 package types are required.
 
 If one or more package in this categories has not been found, CMake will abort
-when calling :cmd;`feature_summary` with the
+when calling :command:`feature_summary` with the
 'FATAL_ON_MISSING_REQUIRED_PACKAGES' option enabled.
 
 The default value for this global property is ``REQUIRED``.
@@ -54,7 +54,7 @@ The default value for this global property is ``REQUIRED``.
 
 The global property :variable:`FeatureSummary_DEFAULT_PKG_TYPE` defines which
 package type is the default one.
-When calling :cmd;`feature_summary`, if the user did not set the package type
+When calling :command:`feature_summary`, if the user did not set the package type
 explicitly, the package will be assigned to this category.
 
 This value must be one of the types defined in the
@@ -62,6 +62,16 @@ This value must be one of the types defined in the
 is set for all the packages.
 
 The default value for this global property is ``OPTIONAL``.
+
+
+.. variable:: FeatureSummary_<TYPE>_DESCRIPTION
+
+The global property :variable:`FeatureSummary_<TYPE>_DESCRIPTION` can be defined
+for each type to replace the type name with the specified string whenever the
+package type is used in an output string.
+
+If not set, the string "``<TYPE>`` packages" is used.
+
 
 #]=======================================================================]
 
@@ -196,9 +206,11 @@ endfunction()
                      [VAR <variable_name>]
                      [INCLUDE_QUIET_PACKAGES]
                      [FATAL_ON_MISSING_REQUIRED_PACKAGES]
-                     [DESCRIPTION "Found packages:"]
+                     [DESCRIPTION "<description>" | DEFAULT_DESCRIPTION]
                      [QUIET_ON_EMPTY]
-                     WHAT (ALL | PACKAGES_FOUND | PACKAGES_NOT_FOUND
+                     WHAT (ALL
+                          | PACKAGES_FOUND | PACKAGES_NOT_FOUND
+                          | <TYPE>_PACKAGES_FOUND | <TYPE>_PACKAGES_NOT_FOUND
                           | ENABLED_FEATURES | DISABLED_FEATURES)
                    )
 
@@ -245,10 +257,13 @@ endfunction()
   information is "printed" into the specified variable.  If ``FILENAME`` is
   not used, the information is printed to the terminal.  Using the
   ``DESCRIPTION`` option a description or headline can be set which will be
-  printed above the actual content.  If ``INCLUDE_QUIET_PACKAGES`` is given,
-  packages which have been searched with ``find_package(... QUIET)`` will
-  also be listed.  By default they are skipped.  If
-  ``FATAL_ON_MISSING_REQUIRED_PACKAGES`` is given, CMake will abort if a
+  printed above the actual content.  If only one type of
+  package was requested, no title is printed, unless it is explicitly set using
+  either ``DESCRIPTION`` to use a custom string, or ``DEFAULT_DESCRIPTION`` to
+  use a default title for the requested type.
+  If ``INCLUDE_QUIET_PACKAGES`` is given, packages which have been searched with
+  ``find_package(... QUIET)`` will also be listed. By default they are skipped.
+  If ``FATAL_ON_MISSING_REQUIRED_PACKAGES`` is given, CMake will abort if a
   package which is marked as one of the package types listed in the
   :variable:`FeatureSummary_REQUIRED_PKG_TYPES` global property has not been
   found.
@@ -304,8 +319,14 @@ endfunction()
 
 function(FEATURE_SUMMARY)
 # CMAKE_PARSE_ARGUMENTS(<prefix> <options> <one_value_keywords> <multi_value_keywords> args...)
-  set(options APPEND INCLUDE_QUIET_PACKAGES FATAL_ON_MISSING_REQUIRED_PACKAGES QUIET_ON_EMPTY)
-  set(oneValueArgs FILENAME VAR DESCRIPTION)
+  set(options APPEND
+              INCLUDE_QUIET_PACKAGES
+              FATAL_ON_MISSING_REQUIRED_PACKAGES
+              QUIET_ON_EMPTY
+              DEFAULT_DESCRIPTION)
+  set(oneValueArgs FILENAME
+                   VAR
+                   DESCRIPTION)
   set(multiValueArgs WHAT)
 
   CMAKE_PARSE_ARGUMENTS(_FS "${options}" "${oneValueArgs}" "${multiValueArgs}"  ${_FIRST_ARG} ${ARGN})
@@ -316,6 +337,11 @@ function(FEATURE_SUMMARY)
 
   if(NOT _FS_WHAT)
     message(FATAL_ERROR "The call to FEATURE_SUMMARY() doesn't set the required WHAT argument.")
+  endif()
+
+  if(_FS_DEFAULT_DESCRIPTION AND DEFINED _FS_DESCRIPTION)
+    message(WARNING "DEFAULT_DESCRIPTION option discarded since DESCRIPTION is set.")
+    set(_FS_DEFAULT_DESCRIPTION 0)
   endif()
 
   set(validWhatParts "ENABLED_FEATURES"
@@ -330,11 +356,29 @@ function(FEATURE_SUMMARY)
                                "${_fsPkgType}_PACKAGES_NOT_FOUND")
   endforeach()
 
+  set(title_ENABLED_FEATURES               "The following features have been enabled:")
+  set(title_DISABLED_FEATURES              "The following features have been disabled:")
+  set(title_PACKAGES_FOUND                 "The following packages have been found:")
+  set(title_PACKAGES_NOT_FOUND             "The following packages have not been found:")
+  foreach(_fsPkgType ${_fsPkgTypes})
+    set(_fsPkgTypeDescription "${_fsPkgType} packages")
+    get_property(_fsPkgTypeDescriptionIsSet GLOBAL PROPERTY FeatureSummary_${_fsPkgType}_DESCRIPTION SET)
+    if(_fsPkgTypeDescriptionIsSet)
+      get_property(_fsPkgTypeDescription GLOBAL PROPERTY FeatureSummary_${_fsPkgType}_DESCRIPTION )
+    endif()
+    set(title_${_fsPkgType}_PACKAGES_FOUND     "The following ${_fsPkgTypeDescription} have been found:")
+    set(title_${_fsPkgType}_PACKAGES_NOT_FOUND "The following ${_fsPkgTypeDescription} have not been found:")
+  endforeach()
+
   list(FIND validWhatParts "${_FS_WHAT}" indexInList)
   if(NOT "${indexInList}" STREQUAL "-1")
     _FS_GET_FEATURE_SUMMARY( ${_FS_WHAT} _featureSummary ${_FS_INCLUDE_QUIET_PACKAGES} )
     if(_featureSummary OR NOT _FS_QUIET_ON_EMPTY)
-      set(_fullText "${_FS_DESCRIPTION}${_featureSummary}\n")
+      if(_FS_DEFAULT_DESCRIPTION)
+        set(_fullText "${title_${_FS_WHAT}}\n${_featureSummary}\n")
+      else()
+        set(_fullText "${_FS_DESCRIPTION}${_featureSummary}\n")
+      endif()
     endif()
 
     if(_featureSummary)
@@ -372,15 +416,6 @@ function(FEATURE_SUMMARY)
         endif()
       endforeach()
     endif()
-
-    set(title_ENABLED_FEATURES               "The following features have been enabled:")
-    set(title_DISABLED_FEATURES              "The following features have been disabled:")
-    set(title_PACKAGES_FOUND                 "The following packages have been found:")
-    set(title_PACKAGES_NOT_FOUND             "The following packages have not been found:")
-    foreach(_fsPkgType ${_fsPkgTypes})
-      set(title_${_fsPkgType}_PACKAGES_FOUND     "The following ${_fsPkgType} packages have been found:")
-      set(title_${_fsPkgType}_PACKAGES_NOT_FOUND "The following ${_fsPkgType} packages have not been found:")
-    endforeach()
 
     set(_fullText "${_FS_DESCRIPTION}")
     foreach(part ${allWhatParts})
