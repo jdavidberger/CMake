@@ -1,7 +1,5 @@
-//
-// Created by J on 1/28/2017.
-//
-
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDebugger.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
