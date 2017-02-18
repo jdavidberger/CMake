@@ -1,7 +1,11 @@
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDebugServerJson.h"
 #include "cmMakefile.h"
 #include <cmyajl/include/yajl/yajl_parse.h>
-#include <zconf.h>
+#include "cmsys/SystemInformation.hxx"
+
+static cmsys::SystemInformation info;
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include "cm_jsoncpp_reader.h"
@@ -173,7 +177,9 @@ void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
 
   std::string state = "";
   Json::Value value;
-  value["PID"] = ::getpid();
+
+  value["PID"] = info.GetProcessId();
+
   switch (Debugger.CurrentState()) {
     case cmDebugger::State::Running:
       value["State"] = "Running";
