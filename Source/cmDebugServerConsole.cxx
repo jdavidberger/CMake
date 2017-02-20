@@ -4,6 +4,7 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmConnection.h"
 #include "cmMakefile.h"
 #include "cmServerConnection.h"
+#include "cmVariableWatch.h"
 
 cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger,
                                            cmConnection* conn)
@@ -44,6 +45,19 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
     Debugger.Break();
   } else if (request == "q") {
     exit(0);
+  } else if (request.find("watch ") == 0) {
+    auto whatToWatch = request.substr(strlen("watch "));
+    Debugger.SetWatchpoint(whatToWatch);
+    connection->WriteData("Set watchpoint on write '" + whatToWatch + "'\n");
+  } else if (request.find("rwatch ") == 0) {
+    auto whatToWatch = request.substr(strlen("rwatch "));
+    Debugger.SetWatchpoint(whatToWatch, cmDebugger::WATCHPOINT_READ);
+    connection->WriteData("Set watchpoint on read '" + whatToWatch + "'\n");
+  } else if (request.find("awatch ") == 0) {
+    auto whatToWatch = request.substr(strlen("awatch "));
+    Debugger.SetWatchpoint(whatToWatch, cmDebugger::WATCHPOINT_ALL);
+    connection->WriteData("Set watchpoint on read/write '" + whatToWatch +
+                          "'\n");
   } else if (request.find("info br") == 0) {
     std::stringstream ss;
     auto& bps = Debugger.GetBreakpoints();
@@ -150,5 +164,28 @@ void cmDebugServerConsole::OnChangeState()
         printPrompt(Connection.get());
         break;
     }
+  }
+}
+
+void cmDebugServerConsole::OnBreakpoint(breakpoint_id breakpoint)
+{
+  std::stringstream ss;
+  ss << "# Breakpoint " << breakpoint << " hit" << std::endl;
+
+  for (auto& Connection : Connections) {
+    Connection->WriteData(ss.str());
+  }
+}
+
+void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
+                                        int access,
+                                        const std::string& newValue)
+{
+  std::stringstream ss;
+  ss << "Variable '" << variable << "' is being set to '" << newValue << "' ("
+     << cmVariableWatch::GetAccessAsString(access) << ")" << std::endl;
+
+  for (auto& Connection : Connections) {
+    Connection->WriteData(ss.str());
   }
 }

@@ -4,9 +4,9 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
 #include "cmake.h"
+#include <cmVariableWatch.h>
 #include <condition_variable>
 #include <set>
-
 /**
  * Actual debugger implementation.
  */
@@ -54,11 +54,28 @@ class cmDebugger_impl : public cmDebugger
   std::set<cmDebuggerListener*> listeners;
   cmListFileContext currentLocation;
 
+  struct Watchpoint
+  {
+    typedef std::shared_ptr<Watchpoint> ptr;
+    cmDebugger_impl* debugger = 0;
+    WatchpointType watchpointType;
+    Watchpoint(cmDebugger_impl* debugger, WatchpointType watchpointType)
+      : debugger(debugger)
+      , watchpointType(watchpointType)
+    {
+    }
+  };
+  std::vector<std::weak_ptr<Watchpoint> > activeWatchpoints;
+
 public:
   ~cmDebugger_impl()
   {
     for (auto& s : listeners) {
       delete s;
+    }
+    for (auto& weakWatch : activeWatchpoints) {
+      if (auto watch = weakWatch.lock())
+        watch->debugger = 0;
     }
     listeners.clear();
   }
@@ -135,9 +152,13 @@ public:
     // Breakpoint detection
     {
       std::lock_guard<std::mutex> l(breakpointMutex);
-      for (auto& bp : breakpoints) {
+      for (size_t bid = 0; bid < breakpoints.size(); bid++) {
+        auto& bp = breakpoints[bid];
         if (bp.matches(context)) {
           breakPending = true;
+          for (auto& l : listeners) {
+            l->OnBreakpoint(bid);
+          }
           break;
         }
       }
@@ -163,7 +184,86 @@ public:
     return breakpoints.size() - 1;
   }
 
-  breakpoint_id SetWatchpoint(const std::string& expr) override { return 0; }
+  void OnWatchCallback(const std::string& variable,
+                       int access_type,
+                       const char* newValue)
+  {
+    // It's possible that this is triggered by the user setting / reading the
+    // variable via the debugger;
+    // in which case we can't pause and shouldn't notify listeners.
+    if (Lock.owns_lock()) {
+      for (auto& l : listeners) {
+        l->OnWatchpoint(variable, access_type, newValue);
+      }
+      PauseExecution();
+    }
+  }
+
+  static void WatchMethodCB(const std::string& variable,
+                            int access_type,
+                            void* client_data,
+                            const char* newValue,
+                            const cmMakefile* mf)
+  {
+    auto watchpointPtr = (Watchpoint::ptr*)client_data;
+    if (watchpointPtr == 0)
+      return;
+
+    auto watchpoint = watchpointPtr->get();
+    if (watchpoint == 0)
+      return;
+
+    auto debugger = watchpoint->debugger;
+    if (debugger == 0)
+      return;
+
+    bool matchesFilter = false;
+    bool isRead =
+      access_type == cmVariableWatch::UNKNOWN_VARIABLE_READ_ACCESS |
+      access_type == cmVariableWatch::VARIABLE_READ_ACCESS;
+    bool isWrite = access_type == cmVariableWatch::VARIABLE_MODIFIED_ACCESS;
+    bool isDefined =
+      access_type == cmVariableWatch::UNKNOWN_VARIABLE_DEFINED_ACCESS;
+    bool isUnset = access_type == cmVariableWatch::VARIABLE_REMOVED_ACCESS;
+
+    matchesFilter |=
+      isRead && watchpoint->watchpointType & cmDebugger::WATCHPOINT_READ;
+    matchesFilter |=
+      isWrite && watchpoint->watchpointType & cmDebugger::WATCHPOINT_WRITE;
+    matchesFilter |=
+      isDefined && watchpoint->watchpointType & cmDebugger::WATCHPOINT_DEFINE;
+    matchesFilter |=
+      isUnset && watchpoint->watchpointType & cmDebugger::WATCHPOINT_UNDEFINED;
+
+    if (matchesFilter) {
+      debugger->OnWatchCallback(variable, access_type, newValue);
+    }
+  }
+  static void WatchMethodDelete(void* client_data)
+  {
+    delete (Watchpoint::ptr*)client_data;
+  }
+  breakpoint_id SetWatchpoint(const std::string& expr,
+                              WatchpointType watchpoint) override
+  {
+    // The pointer to a smart pointer mechanism isn't pretty, but it should be
+    // safe.The idea is that we store away the control block into
+    // activeWatchpoints as a weak ptr; and so if the VariableWatch is
+    // destroyed first, the weak ptr just goes stale. If the debugger is
+    // destroyed first, the weak_ptrs must still be valid, so in the
+    // debugger_impl dtor we clear the debugger on all still-valid watchpoints,
+    // and the watchpoint callback is a noop if the debugger field isn't set.
+
+    // NOTE: This means we are safe for either order, but is still isn't thread
+    // safe -- you can hit a race condition if you delete the cmVariableWatch
+    // and the cmDebugger simultaneously in different threads.
+    auto watch = new Watchpoint::ptr(new Watchpoint(this, watchpoint));
+    activeWatchpoints.push_back(*watch);
+
+    this->CMakeInstance.GetVariableWatch()->AddWatch(
+      expr, WatchMethodCB, watch, WatchMethodDelete);
+    return 0;
+  }
 
   void ClearBreakpoint(breakpoint_id id) override
   {
