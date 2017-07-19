@@ -29,6 +29,7 @@
 #include "cm_sys_stat.h"
 #if defined(HAVE_DEBUG_SERVER)
 #include "cmDebugServerConsole.h"
+#include "cmDebugServerJson.h"
 #endif
 #include "cmDebugger.h"
 
@@ -635,9 +636,7 @@ void cmake::SetupDebugger(const std::string& connection)
     if (connection == "stdin") {
       server = new cmDebugServerConsole(*this->Debugger);
     } else {
-      std::cerr << "Currently only 'stdin' is supported for debugger "
-                   "connections; not starting starting the debugger"
-                << std::endl;
+      server = new cmDebugServerJson(*this->Debugger, connection);
     }
 
     if (server) {
