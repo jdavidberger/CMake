@@ -415,9 +415,18 @@ static void __start_thread(void* arg)
   server->Serve(&error);
 }
 
+static void __shutdownThread(uv_async_t* arg)
+{
+  auto server = reinterpret_cast<cmServerBase*>(arg->data);
+  on_walk_to_shutdown(reinterpret_cast<uv_handle_t*>(arg), CM_NULLPTR);
+  server->StartShutDown();
+}
+
 bool cmServerBase::StartServeThread()
 {
   ServeThreadRunning = true;
+  uv_async_init(&Loop, &this->ShutdownSignal, __shutdownThread);
+  this->ShutdownSignal.data = this;
   uv_thread_create(&ServeThread, __start_thread, this);
   return true;
 }
@@ -463,8 +472,6 @@ void cmServerBase::OnDisconnect()
 
 void cmServerBase::OnServeStart()
 {
-  uv_signal_start(&this->SIGINTHandler, &on_signal, SIGINT);
-  uv_signal_start(&this->SIGHUPHandler, &on_signal, SIGHUP);
 }
 
 void cmServerBase::StartShutDown()
@@ -482,11 +489,7 @@ void cmServerBase::StartShutDown()
   }
   Connections.clear();
 
-  uv_stop(&Loop);
-
   uv_walk(&Loop, on_walk_to_shutdown, CM_NULLPTR);
-
-  uv_run(&Loop, UV_RUN_DEFAULT);
 }
 
 bool cmServerBase::OnSignal(int signum)
@@ -500,12 +503,6 @@ cmServerBase::cmServerBase(cmConnection* connection)
 {
   uv_loop_init(&Loop);
 
-  uv_signal_init(&Loop, &this->SIGINTHandler);
-  uv_signal_init(&Loop, &this->SIGHUPHandler);
-
-  this->SIGINTHandler.data = this;
-  this->SIGHUPHandler.data = this;
-
   AddNewConnection(connection);
 }
 
@@ -513,7 +510,7 @@ cmServerBase::~cmServerBase()
 {
 
   if (ServeThreadRunning) {
-    StartShutDown();
+    uv_async_send(&this->ShutdownSignal);
     uv_thread_join(&ServeThread);
   }
 
