@@ -1032,6 +1032,7 @@ if(CMake_ENABLE_DEBUG_SERVER)
   add_library(CMakeDebugServerLib
     cmDebugServer.cxx cmDebugServer.h
     cmDebugServerConsole.cxx cmDebugServerConsole.h
+    cmDebugServerJson.cxx cmDebugServerJson.h
     )
   target_link_libraries(CMakeDebugServerLib CMakeLib CMakeServerLib)
   set_property(SOURCE cmake.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_DEBUG_SERVER=1)
