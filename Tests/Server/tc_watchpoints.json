@@ -1,0 +1,26 @@
+[
+    { "message": "Testing watchpoints" },
+    { "recv": {"Backtrace": [{"Line": 1, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "cmake_minimum_required"}], "State": "Paused"} },
+    { "send": { "Command": "AddWatchpoint", "Expr": "var1", "Type": "All" } },
+    { "send": { "Command": "AddWatchpoint", "Expr": "var2", "Type": "All" } },
+    { "send": { "Command": "AddWatchpoint", "Expr": "bar4", "Type": "All" } },
+    { "send": { "Command": "AddWatchpoint", "Expr": "bar5", "Type": "All" } },
+    { "send": { "Command": "Continue" } },
+
+    { "recv": {"Backtrace": [{"Line": 5, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "set"}], "State": "Paused"} },
+    { "send": { "Command": "Evaluate", "Request": "var1" } },
+    { "send": { "Command": "Evaluate", "Request": "\"${PROJECT_NAME}-${var1}\"" } },
+    { "recv": { "Request": "var1", "Response": "123" } },
+    { "recv": { "Request": "\"${PROJECT_NAME}-${var1}\"", "Response": "\"buildsystem2-123\"" } },
+    { "send": { "Command": "RemoveWatchpoint", "Expr": "var2" } },
+    { "send": { "Command": "Continue" } },
+
+    { "recv": {"Backtrace": [{"Line": 1, "Type": "BuildsystemDirectoryType", "ID": 0, "File": "/buildsystem1/subdir/CMakeLists.txt", "Name": "set"}], "State": "Paused"} },
+    { "send": { "Command": "ClearWatchpoints" } },
+
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/subdir/CMakeLists.txt", "Line":5 } },
+    { "send": { "Command": "Continue" } },
+
+    { "recv": {"Backtrace": [{"Line": 5, "Type": "BuildsystemDirectoryType", "ID": 0, "File": "/buildsystem1/subdir/CMakeLists.txt", "Name": "add_executable"}], "State": "Paused"} },
+    { "send": { "Command": "Continue" } }
+]

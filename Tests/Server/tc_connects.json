@@ -1,0 +1,26 @@
+[
+    { "message": "Testing connection" },
+    { "recv": {"Backtrace": [{"Line": 1, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "cmake_minimum_required"}], "State": "Paused"} },
+    { "send": { "Command": "StepOver" } },
+    { "recv": {"Backtrace": [{"Line": 3, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "project"}], "State": "Paused"} },
+
+    { "message": "Break at the f1 function so we can step in to it" },
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":26 } },
+    { "send": { "Command": "Continue" } },
+
+    { "recv": {"Backtrace": [{"Line": 26, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "f1"}], "State": "Paused"} },
+    { "send": { "Command": "StepIn" } },
+
+    { "recv": {"Backtrace": [
+	{"Line": 16, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "set"},
+	{"Line": 26, "Type": "BaseType", "ID": 1, "File": "/buildsystem1/CMakeLists.txt", "Name": "f1"}],
+	       "State": "Paused"} },
+
+    { "send": { "Command": "StepOut" } },
+    { "recv": {"Backtrace": [{"Line": 28, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "f1"}], "State": "Paused"} },
+
+    { "send": { "Command": "StepOver" } },
+    { "recv": {"Backtrace": [{"Line": 30, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "set"}], "State": "Paused"} },
+
+    { "send": { "Command": "Continue" } }
+]
