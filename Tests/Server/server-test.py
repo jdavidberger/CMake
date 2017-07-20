@@ -9,7 +9,7 @@ sourceDir = sys.argv[3]
 buildDir = sys.argv[4] + "/" + os.path.splitext(os.path.basename(testFile))[0]
 cmakeGenerator = sys.argv[5]
 
-print("Test:", testFile,
+print("Server Test:", testFile,
       "\n-- SourceDir:", sourceDir,
       "\n-- BuildDir:", buildDir,
       "\n-- Generator:", cmakeGenerator)
@@ -17,24 +17,16 @@ print("Test:", testFile,
 if os.path.exists(buildDir):
     shutil.rmtree(buildDir)
 
-proc = cmakelib.initProc(cmakeCommand)
+cmakelib.filterBase = sourceDir
+
+proc = cmakelib.initServerProc(cmakeCommand)
 
 with open(testFile) as f:
     testData = json.loads(f.read())
 
 for obj in testData:
-    if 'sendRaw' in obj:
-        data = obj['sendRaw']
-        if debug: print("Sending raw:", data)
-        cmakelib.writeRawData(proc, data)
-    elif 'send' in obj:
-        data = obj['send']
-        if debug: print("Sending:", json.dumps(data))
-        cmakelib.writePayload(proc, data)
-    elif 'recv' in obj:
-        data = obj['recv']
-        if debug: print("Waiting for:", json.dumps(data))
-        cmakelib.waitForMessage(proc, data)
+    if cmakelib.handleBasicMessage(proc, obj, debug):
+        pass
     elif 'reply' in obj:
         data = obj['reply']
         if debug: print("Waiting for reply:", json.dumps(data))
@@ -95,26 +87,10 @@ for obj in testData:
         if not 'generator' in data: data['generator'] = cmakeGenerator
         if not 'extraGenerator' in data: data['extraGenerator'] = ''
         cmakelib.validateGlobalSettings(proc, cmakeCommand, data)
-    elif 'message' in obj:
-        print("MESSAGE:", obj["message"])
     else:
         print("Unknown command:", json.dumps(obj))
         sys.exit(2)
 
-    print("Completed")
+print("Completed")
 
-# Tell the server to exit.
-proc.stdin.close()
-proc.stdout.close()
-
-# Wait for the server to exit.
-# If this version of python supports it, terminate the server after a timeout.
-try:
-    proc.wait(timeout=5)
-except TypeError:
-    proc.wait()
-except:
-    proc.terminate()
-    raise
-
-sys.exit(proc.returncode)
+cmakelib.shutdownProc(proc)

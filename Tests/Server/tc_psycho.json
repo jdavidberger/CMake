@@ -1,0 +1,15 @@
+[
+    { "message": "Testing psycho" },
+    { "recv": {"Backtrace": [{"Line": 1, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "cmake_minimum_required"}], "State": "Paused"} },
+    { "send": { "Command": "Continue" } },
+    { "send": { "Command": "Break" } },
+    { "send": { "Command": "Break" } },
+    { "send": { "Command": "Break" } },
+    { "send": { "Command": "Break" } },
+    { "send": { "Command": "Break" } },
+    { "send": { "Command": "Evaluate", "Request": "CMAKE_BUILD_TYPE" } },
+    { "send": { "Command": "Break" } },
+    { "waitForPause": true },
+    { "message": "We purposefully do a send and don't check the response. This closes the connection; possibly before the server responds and we want to make sure it handles that gracefully" },
+    { "send": { "Command": "Continue" } }
+]

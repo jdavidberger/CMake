@@ -1,0 +1,22 @@
+[
+    { "message": "Testing breakpoints" },
+    { "recv": {"Backtrace": [{"Line": 1, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "cmake_minimum_required"}], "State": "Paused"} },
+    { "message": "Add four breakpoints."},
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":11 } },
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":13 } },
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":20 } },
+    { "send": { "Command": "AddBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":22 } },
+
+    { "message": "Continue -- we should break at one of our breakpoints."},
+    { "send": { "Command": "Continue" } },
+    { "recv": {"Backtrace": [{"Line": 11, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "add_executable"}], "State": "Paused"} },
+
+    { "message": "Now make sure we can remove the next one, and that it won't break there"},
+    { "send": { "Command": "RemoveBreakpoint", "File": "/buildsystem1/CMakeLists.txt", "Line":13 } },
+    { "send": { "Command": "Continue" } },
+    { "recv": {"Backtrace": [{"Line": 20, "Type": "BaseType", "ID": 0, "File": "/buildsystem1/CMakeLists.txt", "Name": "set"}], "State": "Paused"} },
+
+    { "message": "Clear all breakpoints. Run from here to finish. If it does hit the line 21 bp, it will time out"},
+    { "send": { "Command": "ClearBreakpoints" } },
+    { "send": { "Command": "Continue" } }
+]
