@@ -242,6 +242,7 @@ cmFileMonitor* cmServer::FileMonitor() const
 void cmServer::WriteJsonObject(const Json::Value& jsonValue,
                                const DebugInfo* debug) const
 {
+  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
   for (auto& connection : this->Connections) {
     WriteJsonObject(connection.get(), jsonValue, debug);
   }
@@ -441,9 +442,12 @@ bool cmServerBase::Serve(std::string* errorMessage)
 
   OnServeStart();
 
-  for (auto& connection : Connections) {
-    if (!connection->OnServeStart(errorMessage)) {
-      return false;
+  {
+    std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+    for (auto& connection : Connections) {
+      if (!connection->OnServeStart(errorMessage)) {
+        return false;
+      }
     }
   }
 
@@ -475,10 +479,13 @@ void cmServerBase::StartShutDown()
     uv_signal_stop(&this->SIGHUPHandler);
   }
 
-  for (auto& connection : Connections) {
-    connection->OnConnectionShuttingDown();
+  {
+    std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+    for (auto& connection : Connections) {
+      connection->OnConnectionShuttingDown();
+    }
+    Connections.clear();
   }
-  Connections.clear();
 
   uv_walk(&Loop, on_walk_to_shutdown, CM_NULLPTR);
 }
@@ -510,6 +517,7 @@ cmServerBase::~cmServerBase()
 
 void cmServerBase::AddNewConnection(cmConnection* ownedConnection)
 {
+  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
   Connections.emplace_back(ownedConnection);
   ownedConnection->SetServer(this);
 }
@@ -521,6 +529,8 @@ uv_loop_t* cmServerBase::GetLoop()
 
 void cmServerBase::OnDisconnect(cmConnection* pConnection)
 {
+  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+
   auto pred = [pConnection](const std::unique_ptr<cmConnection>& m) {
     return m.get() == pConnection;
   };

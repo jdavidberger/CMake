@@ -8,6 +8,7 @@
 #include "cm_uv.h"
 
 #include <memory> // IWYU pragma: keep
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,7 @@ public:
   void OnDisconnect(cmConnection* pConnection);
 
 protected:
+  mutable std::recursive_mutex ConnectionsMutex;
   std::vector<std::unique_ptr<cmConnection> > Connections;
 
   bool ServeThreadRunning = false;
