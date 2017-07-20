@@ -24,6 +24,7 @@ class cmServerBufferStrategy : public cmConnectionBufferStrategy
 {
 public:
   std::string BufferMessage(std::string& rawBuffer) override;
+  std::string BufferOutMessage(const std::string& rawBuffer) const override;
 
 private:
   std::string RequestBuffer;
