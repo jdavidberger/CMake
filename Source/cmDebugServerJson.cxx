@@ -43,6 +43,33 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
     Debugger.ClearBreakpoint(value["File"].asString(), value["Line"].asInt());
   } else if (request.find("AddBreakpoint") == 0) {
     Debugger.SetBreakpoint(value["File"].asString(), value["Line"].asInt());
+  } else if (request.find("AddWatchpoint") == 0) {
+    auto type = value["Type"].asString();
+    cmWatchpoint::WatchpointType watchpointType =
+      cmWatchpoint::WATCHPOINT_WRITE;
+    if (type == "Read") {
+      watchpointType = cmWatchpoint::WATCHPOINT_READ;
+    } else if (type == "All") {
+      watchpointType = cmWatchpoint::WATCHPOINT_ALL;
+    }
+
+    Debugger.SetWatchpoint(value["Expr"].asString(), watchpointType);
+  } else if (request.find("RemoveWatchpoint") == 0) {
+    auto expr = value["Expr"].asString();
+    auto watchpoints = Debugger.GetWatchpoints();
+    std::vector<watchpoint_id> removeList;
+    removeList.reserve(watchpoints.size());
+    for (auto& watchpoint : watchpoints) {
+      if (watchpoint.Variable == expr) {
+        removeList.push_back(watchpoint.Id);
+      }
+    }
+
+    for (auto& w_id : removeList) {
+      Debugger.ClearWatchpoint(w_id);
+    }
+  } else if (request.find("ClearWatchpoints") == 0) {
+    Debugger.ClearAllWatchpoints();
   } else {
 
     auto ctx = Debugger.PauseContext();
