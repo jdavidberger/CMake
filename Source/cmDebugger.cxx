@@ -366,10 +366,16 @@ public:
     breakpoints.clear();
   }
 
-  void Continue() override
+  void WakeupContinue()
   {
     continuePending = true;
     cv.notify_all();
+  }
+
+  void Continue() override
+  {
+    breakPending = false;
+    WakeupContinue();
   }
 
   void Break() override { breakPending = true; }
@@ -377,19 +383,20 @@ public:
   void Step() override
   {
     breakDepth = (int32_t)GetBacktrace().Depth();
-    Continue();
+    WakeupContinue();
   }
 
   void StepIn() override
   {
+    breakDepth = -1;
     breakPending = true;
-    Continue();
+    WakeupContinue();
   }
 
   void StepOut() override
   {
     breakDepth = (int32_t)(GetBacktrace().Depth()) - 1;
-    Continue();
+    WakeupContinue();
   }
 
   State::t CurrentState() const override { return this->state; }
