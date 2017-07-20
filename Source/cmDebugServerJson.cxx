@@ -74,6 +74,8 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
 
     auto ctx = Debugger.PauseContext();
     if (!ctx) {
+      value["Error"] = "Improper command for running context";
+      connection->WriteData(value.toStyledString());
       return;
     }
 
@@ -102,6 +104,10 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
         value["Response"] = false;
       }
       connection->WriteData(value.toStyledString());
+    } else {
+      value["Error"] = "Improper command for paused context";
+      connection->WriteData(value.toStyledString());
+      return;
     }
   }
 }
