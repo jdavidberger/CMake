@@ -91,12 +91,9 @@ public:
  */
 class cmPauseContext
 {
-  cmDebugger* Debugger = CM_NULLPTR;
-  std::unique_lock<std::recursive_mutex> Lock;
-
 public:
-  cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger);
-
+  typedef std::recursive_timed_mutex master_mutex_t;
+  cmPauseContext(master_mutex_t& m, cmDebugger* debugger);
   /**
    * @return Whether or not this object has aquired the required lock to do
    * anything.
@@ -110,6 +107,10 @@ public:
   void StepIn();
   void StepOut();
   cmListFileContext CurrentLine() const;
+
+private:
+  cmDebugger* Debugger = CM_NULLPTR;
+  std::unique_lock<master_mutex_t> Lock;
 };
 
 /***

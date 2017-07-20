@@ -30,9 +30,10 @@ class cmDebugger_impl : public cmDebugger
    * only goes into cv.wait when some break
    * condition is hit.
    */
-  std::recursive_mutex m;
+  typedef cmPauseContext::master_mutex_t master_mutex_t;
+  master_mutex_t m;
   std::condition_variable_any cv;
-  std::unique_lock<std::recursive_mutex> Lock;
+  std::unique_lock<master_mutex_t> Lock;
 
   /**
    * This flag sets up the next instruction to go into the pause state.
@@ -432,10 +433,23 @@ bool cmBreakpoint::matches(const std::string& testFile, size_t testLine) const
   return testFile.find(File) != std::string::npos;
 }
 
-cmPauseContext::cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger)
+cmPauseContext::cmPauseContext(master_mutex_t& m, cmDebugger* debugger)
   : Debugger(debugger)
   , Lock(m, std::try_to_lock)
 {
+  // If we didn't aquire the lock, but the current state is paused, we are
+  // likely
+  // in a very simple race condition; right before the main thread is about to
+  // wait.
+  // This is fine in general but annoying for unit testing. A smallish timeout
+  // is used here for consistency. The only conditions that will fail are:
+  // a) Incredibly slow machine; or starved threads
+  // b) Multiple cmPauseContexts in multiple threads were created
+  // c) Execution was resumed as this oject was created
+  if (!Lock.owns_lock() &&
+      Debugger->CurrentState() == cmDebugger::State::Paused) {
+    Lock.try_lock_for(std::chrono::milliseconds(100));
+  }
 }
 
 cmPauseContext::operator bool() const
