@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <utility>
 
@@ -410,7 +411,11 @@ static void __start_thread(void* arg)
 {
   auto server = reinterpret_cast<cmServerBase*>(arg);
   std::string error;
-  server->Serve(&error);
+  bool success = server->Serve(&error);
+  if (!success || error.empty() == false) {
+    std::cerr << "Error during serve: " << error << std::endl;
+    assert(success);
+  }
 }
 
 static void __shutdownThread(uv_async_t* arg)
@@ -456,7 +461,6 @@ bool cmServerBase::Serve(std::string* errorMessage)
 
   if (uv_run(&Loop, UV_RUN_DEFAULT) != 0) {
     *errorMessage = "Internal Error: Event loop stopped in unclean state.";
-    StartShutDown();
     return false;
   }
 
@@ -503,7 +507,8 @@ bool cmServerBase::OnSignal(int signum)
 
 cmServerBase::cmServerBase(cmConnection* connection)
 {
-  uv_loop_init(&Loop);
+  auto err = uv_loop_init(&Loop);
+  assert(err == 0);
 
   err = uv_rwlock_init(&ConnectionsMutex);
   assert(err == 0);
