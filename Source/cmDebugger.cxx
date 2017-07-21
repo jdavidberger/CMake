@@ -5,6 +5,7 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
 #include "cmake.h"
+#include <atomic>
 #include <cmVariableWatch.h>
 #include <condition_variable>
 #include <map>
@@ -16,7 +17,7 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 class cmDebugger_impl : public cmDebugger
 {
   cmake& CMakeInstance;
-  State::t state = State::Unknown;
+  std::atomic<State::t> state = { State::Unknown };
 
   /***
    * The main thread atomics used to control execution. We use a recursive
@@ -36,12 +37,12 @@ class cmDebugger_impl : public cmDebugger
   /**
    * This flag sets up the next instruction to go into the pause state.
    */
-  bool breakPending = true; // Break on connection
+  std::atomic<bool> breakPending = { true }; // Break on connection
 
   /**
    * This flag is used to avoid spurious wakeups resuming the debugger
    */
-  bool continuePending = false;
+  std::atomic<bool> continuePending = { false };
 
   /***
    * We run the breakpoints off of a separate mutex so that they can be set and
@@ -108,18 +109,20 @@ public:
     listeners.erase(listener);
   }
 
+  void SetState(State::t newState) { state = newState; }
+
   void PauseExecution()
   {
     breakPending = false;
     breakDepth = -1;
-    state = State::Paused;
+    SetState(State::Paused);
     for (auto& l : listeners) {
       l->OnChangeState();
     }
 
     continuePending = false;
-    cv.wait(Lock, [this] { return continuePending; });
-    state = State::Running;
+    cv.wait(Lock, [this] { return (bool)continuePending; });
+    SetState(State::Running);
     for (auto& l : listeners) {
       l->OnChangeState();
     }
@@ -149,7 +152,7 @@ public:
   {
     (void)line;
 
-    state = State::Running;
+    SetState(State::Running);
     currentLocation = context;
 
     // Step in / Step out logic. We have a target
@@ -197,7 +200,7 @@ public:
     // It's possible that this is triggered by the user setting / reading the
     // variable via the debugger;
     // in which case we can't pause and shouldn't notify listeners.
-    if (Lock.owns_lock()) {
+    if (state != State::Paused) {
       for (auto& l : listeners) {
         l->OnWatchpoint(variable, access_type, newValue);
       }

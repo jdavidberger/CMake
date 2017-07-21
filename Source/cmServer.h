@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
+
 class cmConnection;
 class cmFileMonitor;
 class cmServerProtocol;
@@ -67,7 +69,7 @@ protected:
   mutable uv_rwlock_t ConnectionsMutex;
   std::vector<std::unique_ptr<cmConnection> > Connections;
 
-  bool ServeThreadRunning = false;
+  std::atomic<bool> ServeThreadRunning = { false };
   uv_thread_t ServeThread;
   auto_async_t ShutdownSignal;
 #ifndef NDEBUG
