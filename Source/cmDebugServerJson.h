@@ -15,6 +15,14 @@ class cmDebugServerJson : public cmDebugServer
 {
 public:
   /***
+   * Starts a json server using a socket with a json connection strategy on
+   * stdin
+   *
+   * @param debugger The debugger to attach to
+   */
+  cmDebugServerJson(cmDebugger& debugger);
+
+  /***
    * Starts a json server using a socket with a json connection strategy
    *
    * @param debugger The debugger to attach to
