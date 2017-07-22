@@ -10,9 +10,12 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 
 class cmDebugServerConsole : public cmDebugServer
 {
+  bool PrintPrompt = true;
+
 public:
   cmDebugServerConsole(cmDebugger& debugger);
-  cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn);
+  cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn,
+                       bool PrintPrompt = true);
   void printPrompt(cmConnection* connection);
   void ProcessRequest(cmConnection* connection,
                       const std::string& request) override;

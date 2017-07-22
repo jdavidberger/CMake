@@ -28,8 +28,10 @@ static std::string getFileLines(const std::string& filename, long lineStart,
 }
 
 cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger,
-                                           cmConnection* conn)
+                                           cmConnection* conn,
+                                           bool printPrompt)
   : cmDebugServer(debugger, conn)
+  , PrintPrompt(printPrompt)
 {
 }
 
@@ -113,6 +115,25 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
           std::to_string(clearWhat) + "\n");
       }
     }
+  } else if (request.find("br") == 0) {
+    auto space = request.find(' ');
+
+    // The state doesn't matter if we set an absolute path, so handle that
+    // here.
+    if (space != std::string::npos) {
+      auto bpSpecifier = request.substr(space + 1);
+      auto colonPlacement = bpSpecifier.find_last_of(':');
+      size_t line = (size_t)-1;
+
+      if (colonPlacement != std::string::npos) {
+        line = std::stoi(bpSpecifier.substr(colonPlacement + 1));
+        bpSpecifier = bpSpecifier.substr(0, colonPlacement);
+
+        Debugger.SetBreakpoint(bpSpecifier, line);
+        connection->WriteData("Break at " + bpSpecifier + ":" +
+                              std::to_string(line) + "\n");
+      }
+    }
   }
 
   auto ctx = Debugger.PauseContext();
@@ -163,17 +184,14 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
       auto colonPlacement = bpSpecifier.find_last_of(':');
       size_t line = (size_t)-1;
 
-      if (colonPlacement != std::string::npos) {
-        line = std::stoi(bpSpecifier.substr(colonPlacement + 1));
-        bpSpecifier = bpSpecifier.substr(0, colonPlacement);
-      } else if (isdigit(*bpSpecifier.c_str())) {
+      if (colonPlacement == std::string::npos &&
+          isdigit(*bpSpecifier.c_str())) {
         line = std::stoi(bpSpecifier);
         bpSpecifier = ctx.CurrentLine().FilePath;
+        Debugger.SetBreakpoint(bpSpecifier, line);
+        connection->WriteData("Break at " + bpSpecifier + ":" +
+                              std::to_string(line) + "\n");
       }
-
-      Debugger.SetBreakpoint(bpSpecifier, line);
-      connection->WriteData("Break at " + bpSpecifier + ":" +
-                            std::to_string(line) + "\n");
     }
   }
 
@@ -182,7 +200,9 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
 
 void cmDebugServerConsole::printPrompt(cmConnection* connection)
 {
-  connection->WriteData("(debugger) > ");
+  if (PrintPrompt) {
+    connection->WriteData("(debugger) > ");
+  }
 }
 void cmDebugServerConsole::OnChangeState()
 {
