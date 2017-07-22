@@ -9,6 +9,7 @@
 
 class cmake;
 class cmDebugger;
+typedef size_t breakpoint_id;
 
 /***
  * Interface for receiving events from the debugger.
@@ -21,12 +22,23 @@ protected:
 public:
   cmDebuggerListener(cmDebugger& debugger);
   virtual ~cmDebuggerListener() {}
+
   /***
    * Triggers whenever the state changes. The listener is left to query for
    * what that state is and/or attempt to
    * get a pause context.
    */
   virtual void OnChangeState() {}
+
+  virtual void OnBreakpoint(breakpoint_id breakpoint) { (void)breakpoint; }
+
+  virtual void OnWatchpoint(const std::string& variable, int access,
+                            const std::string& newValue)
+  {
+    (void)variable;
+    (void)access;
+    (void)newValue;
+  }
 };
 
 class cmBreakpoint
@@ -98,7 +110,6 @@ public:
      */
   static cmDebugger* Create(cmake& global);
 
-  typedef size_t breakpoint_id;
   struct State
   {
     enum t
@@ -128,7 +139,23 @@ public:
 
   virtual breakpoint_id SetBreakpoint(const std::string& fileName,
                                       size_t line) = 0;
-  virtual breakpoint_id SetWatchpoint(const std::string& expr) = 0;
+
+  enum WatchpointType
+  {
+    WATCHPOINT_DEFINE = 1,
+    WATCHPOINT_WRITE = 2,
+    WATCHPOINT_READ = 4,
+    WATCHPOINT_UNDEFINED = 8,
+    WATCHPOINT_MODIFY =
+      WATCHPOINT_UNDEFINED | WATCHPOINT_WRITE | WATCHPOINT_DEFINE,
+    WATCHPOINT_ALL = WATCHPOINT_UNDEFINED | WATCHPOINT_READ |
+      WATCHPOINT_WRITE |
+      WATCHPOINT_DEFINE
+  };
+
+  virtual breakpoint_id SetWatchpoint(
+    const std::string& expr,
+    WatchpointType watchpoint = WATCHPOINT_MODIFY) = 0;
   virtual void ClearBreakpoint(breakpoint_id) = 0;
   virtual void ClearBreakpoint(const std::string& fileName, size_t line) = 0;
   virtual void ClearAllBreakpoints() = 0;
