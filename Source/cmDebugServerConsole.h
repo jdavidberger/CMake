@@ -17,15 +17,16 @@ public:
   cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn,
                        bool PrintPrompt = true);
   ~cmDebugServerConsole() override { Close(); }
-  void printPrompt(cmConnection* connection);
+  void printPrompt(cmConnection* connection = CM_NULLPTR);
   void ProcessRequest(cmConnection* connection,
                       const std::string& request) override;
 
-  void OnChangeState() override;
   void OnBreakpoint(breakpoint_id breakpoint) override;
 
   void OnWatchpoint(const std::string& variable, int access,
                     const std::string& newValue) override;
+
+  void OnChangeState() override;
 };
 
 #endif // CMAKE_CMDEBUGSERVERSIMPLE_H
