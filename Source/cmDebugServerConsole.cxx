@@ -199,37 +199,15 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
   printPrompt(connection);
 }
 
+static std::string PROMPT = "(debugger) > ";
+
 void cmDebugServerConsole::printPrompt(cmConnection* connection)
 {
   if (PrintPrompt) {
-    connection->WriteData("(debugger) > ");
-  }
-}
-void cmDebugServerConsole::OnChangeState()
-{
-  cmDebuggerListener::OnChangeState();
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
-  for (auto& Connection : Connections) {
-    switch (Debugger.CurrentState()) {
-      case cmDebugger::State::Running:
-        Connection->WriteData("Running...\n");
-        break;
-      case cmDebugger::State::Paused: {
-        auto ctx = Debugger.PauseContext();
-        if (ctx) {
-          auto currentLine = ctx.CurrentLine();
-          Connection->WriteData("Paused at " + currentLine.FilePath + ":" +
-                                std::to_string(currentLine.Line) + " (" +
-                                currentLine.Name + ")\n");
-        } else {
-          Connection->WriteData("Paused at indeterminate state\n");
-        }
-        printPrompt(Connection.get());
-      } break;
-      case cmDebugger::State::Unknown:
-        Connection->WriteData("Unknown state\n");
-        printPrompt(Connection.get());
-        break;
+    if (connection) {
+      connection->WriteData(PROMPT);
+    } else {
+      AsyncBroadcast(PROMPT);
     }
   }
 }
@@ -237,12 +215,9 @@ void cmDebugServerConsole::OnChangeState()
 void cmDebugServerConsole::OnBreakpoint(breakpoint_id breakpoint)
 {
   std::stringstream ss;
-  ss << "# Breakpoint " << breakpoint << " hit" << std::endl;
+  ss << "# Breakpoint " << breakpoint << " hit" << std::endl << PROMPT;
 
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
-  for (auto& Connection : Connections) {
-    Connection->WriteData(ss.str());
-  }
+  AsyncBroadcast(ss.str());
 }
 
 void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
@@ -251,10 +226,36 @@ void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
 {
   std::stringstream ss;
   ss << "Watchpoint '" << variable << "' hit -- '" << newValue << "' ("
-     << cmVariableWatch::GetAccessAsString(access) << ")" << std::endl;
+     << cmVariableWatch::GetAccessAsString(access) << ")" << std::endl
+     << PROMPT;
 
   std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
-  for (auto& Connection : Connections) {
-    Connection->WriteData(ss.str());
+  AsyncBroadcast(ss.str());
+}
+
+void cmDebugServerConsole::OnChangeState()
+{
+  cmDebugServer::OnChangeState();
+
+  switch (Debugger.CurrentState()) {
+    case cmDebugger::State::Running:
+      AsyncBroadcast("Running...\n");
+      break;
+    case cmDebugger::State::Paused: {
+      auto ctx = Debugger.PauseContext();
+      if (ctx) {
+        auto currentLine = ctx.CurrentLine();
+        AsyncBroadcast("Paused at " + currentLine.FilePath + ":" +
+                  std::to_string(currentLine.Line) + " (" + currentLine.Name +
+                  ")\n");
+      } else {
+        AsyncBroadcast("Paused at indeterminate state\n");
+      }
+      AsyncBroadcast(PROMPT);
+    } break;
+    case cmDebugger::State::Unknown:
+      AsyncBroadcast("Unknown state\n");
+      printPrompt();
+      break;
   }
 }
