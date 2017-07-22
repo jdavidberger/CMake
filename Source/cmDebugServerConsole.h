@@ -16,6 +16,7 @@ public:
   cmDebugServerConsole(cmDebugger& debugger);
   cmDebugServerConsole(cmDebugger& debugger, cmConnection* conn,
                        bool PrintPrompt = true);
+  ~cmDebugServerConsole() override { Close(); }
   void printPrompt(cmConnection* connection);
   void ProcessRequest(cmConnection* connection,
                               const std::string& request) override;
