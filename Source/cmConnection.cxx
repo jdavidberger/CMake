@@ -69,6 +69,10 @@ bool cmEventBasedConnection::IsOpen() const
 
 void cmEventBasedConnection::WriteData(const std::string& _data)
 {
+#ifndef NDEBUG
+  assert(this->Server->ServeThreadId == std::this_thread::get_id());
+#endif
+
   auto data = _data;
   assert(this->WriteStream);
   if (BufferStrategy) {

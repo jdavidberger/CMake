@@ -434,6 +434,11 @@ bool cmServerBase::StartServeThread()
 
 bool cmServerBase::Serve(std::string* errorMessage)
 {
+#ifndef NDEBUG
+  assert(ServeThreadId == std::thread::id());
+  ServeThreadId = std::this_thread::get_id();
+#endif
+
   errorMessage->clear();
 
   uv_signal_init(&Loop, &this->SIGINTHandler);

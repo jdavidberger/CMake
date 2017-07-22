@@ -10,6 +10,7 @@
 #include <memory> // IWYU pragma: keep
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 class cmConnection;
@@ -68,6 +69,15 @@ protected:
   bool ServeThreadRunning = false;
   uv_thread_t ServeThread;
   uv_async_t ShutdownSignal;
+#ifndef NDEBUG
+public:
+  // When the server starts it will mark down it's current thread ID,
+  // which is useful in other contexts to just assert that operations
+  // are performed on that same thread.
+  std::thread::id ServeThreadId = {};
+
+protected:
+#endif
 
   uv_loop_t Loop;
 
