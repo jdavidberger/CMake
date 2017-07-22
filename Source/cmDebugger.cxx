@@ -62,6 +62,8 @@ class cmDebugger_impl : public cmDebugger
   std::set<cmDebuggerListener*> listeners;
   cmListFileContext currentLocation;
 
+  bool BreakOnError = true;
+
   struct Watchpoint : public cmWatchpoint
   {
     typedef std::shared_ptr<Watchpoint> ptr;
@@ -75,27 +77,27 @@ class cmDebugger_impl : public cmDebugger
     }
   };
   std::map<watchpoint_id, std::weak_ptr<Watchpoint> > activeWatchpoints;
-  size_t nextBreakId = 0;
+  size_t nextBreakId = 1;
 
 public:
   ~cmDebugger_impl() override
   {
-    for (auto& s : listeners) {
-      delete s;
-    }
-    for (auto& weakWatch : activeWatchpoints) {
-      if (auto watch = weakWatch.second.lock()) {
-          watch->debugger = CM_NULLPTR;
-      }
-    }
-    listeners.clear();
+    ClearListeners();
+    ClearAllWatchpoints();
+    ClearAllBreakpoints();
   }
   cmDebugger_impl(cmake& cmakeInstance)
     : CMakeInstance(cmakeInstance)
     , Lock(m)
   {
   }
-
+  void ClearListeners() override
+  {
+    for (auto& s : listeners) {
+      delete s;
+    }
+    listeners.clear();
+  }
   void AddListener(cmDebuggerListener* listener) override
   {
     listeners.insert(listener);
@@ -180,11 +182,13 @@ public:
       PauseExecution();
     }
   }
-
+  void SetBreakOnError(bool flag) override { BreakOnError = flag; }
   void ErrorHook(const cmListFileContext& context) override
   {
     (void)context;
-    PauseExecution();
+    if (BreakOnError) {
+      PauseExecution();
+    }
   }
 
   void OnWatchCallback(const std::string& variable, int access_type,
@@ -295,7 +299,7 @@ public:
     if (watchpointIt != activeWatchpoints.end()) {
       if (auto watchpoint = watchpointIt->second.lock()) {
         this->CMakeInstance.GetVariableWatch()->RemoveWatch(
-          watchpoint->Variable, WatchMethodCB);
+          watchpoint->Variable, WatchMethodCB, watchpoint->user_data);
         activeWatchpoints.erase(id);
       }
     }

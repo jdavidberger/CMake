@@ -181,7 +181,7 @@ public:
   virtual void ClearAllWatchpoints() = 0;
 
   virtual void Break() = 0;
-
+  virtual void SetBreakOnError(bool flag) = 0;
   /***
    * Requests a pause context
    * @return The returned pause context MUST be checked for validity before
@@ -203,6 +203,7 @@ public:
    * for freeing it.
    */
   virtual void RemoveListener(cmDebuggerListener* listener) = 0;
+  virtual void ClearListeners() = 0;
 };
 
 #endif // CMAKE_CMREMOTEDEBUGGER_H
