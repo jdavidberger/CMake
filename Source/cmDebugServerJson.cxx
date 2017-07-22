@@ -118,7 +118,25 @@ void cmDebugServerJson::ProcessRequest(cmConnection* connection,
   }
 }
 
-void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
+void cmDebugServerJson::OnConnected(cmConnection* connection)
+{
+  SendStatus(connection);
+}
+
+void cmDebugServerJson::SendStatus(cmConnection* connection)
+{
+  auto status = StatusString();
+  if (status.size()) {
+    connection->WriteData(status);
+  }
+}
+
+void cmDebugServerJson::OnChangeState()
+{
+  AsyncBroadcast(StatusString());
+}
+
+std::string cmDebugServerJson::StatusString() const
 {
   std::string state = "";
   Json::Value value;
@@ -181,24 +199,8 @@ void cmDebugServerJson::SendStateUpdate(cmConnection* connection)
 
     } break;
     case cmDebugger::State::Unknown:
-      return;
+      return "";
   }
 
-  if (connection && connection->IsOpen()) {
-    connection->WriteData(value.toStyledString());
-  }
-}
-
-void cmDebugServerJson::OnChangeState()
-{
-  cmDebuggerListener::OnChangeState();
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
-  for (auto& connection : Connections) {
-    SendStateUpdate(connection.get());
-  }
-}
-
-void cmDebugServerJson::OnConnected(cmConnection* connection)
-{
-  SendStateUpdate(connection);
+  return value.toStyledString();
 }

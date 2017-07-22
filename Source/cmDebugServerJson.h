@@ -42,10 +42,13 @@ public:
 
   void ProcessRequest(cmConnection* connection,
                       const std::string& request) override;
-  void SendStateUpdate(cmConnection* connection);
-  void OnChangeState() override;
 
   void OnConnected(cmConnection* connection) override;
+
+  void OnChangeState() override;
+
+  std::string StatusString() const;
+  void SendStatus(cmConnection* connection);
 };
 
 /***
