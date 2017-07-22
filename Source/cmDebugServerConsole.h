@@ -18,6 +18,10 @@ public:
                               const std::string& request) override;
 
   void OnChangeState() override;
+  void OnBreakpoint(breakpoint_id breakpoint) override;
+
+  void OnWatchpoint(const std::string& variable, int access,
+                    const std::string& newValue) override;
 };
 
 #endif // CMAKE_CMDEBUGSERVERSIMPLE_H
