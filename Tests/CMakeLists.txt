@@ -146,6 +146,10 @@ if(BUILD_TESTING)
 
   if(NOT CMake_TEST_EXTERNAL_CMAKE)
     add_subdirectory(CMakeLib)
+
+    if(CMake_ENABLE_DEBUG_SERVER)
+        add_subdirectory(CMakeDebugServerLib)
+    endif()
   endif()
   add_subdirectory(CMakeOnly)
   add_subdirectory(RunCMake)
