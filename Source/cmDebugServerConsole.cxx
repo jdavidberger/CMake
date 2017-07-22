@@ -1,10 +1,31 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 file Copyright.txt or https://cmake.org/licensing for details.  */
+#define NOMINMAX
 #include "cmDebugServerConsole.h"
 #include "cmConnection.h"
 #include "cmMakefile.h"
 #include "cmServerConnection.h"
 #include "cmVariableWatch.h"
+#include <fstream>
+
+static std::string getFileLines(const std::string& filename, long lineStart,
+                                size_t lineCount)
+{
+  std::ifstream file(filename);
+  file.seekg(std::ios::beg);
+  for (int i = 0; i < lineStart - 1; ++i) {
+    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  }
+  std::stringstream rtn;
+  std::string line;
+  for (auto i = lineStart; i < (long)(lineStart + lineCount); i++) {
+    if (std::getline(file, line)) {
+      rtn << i << "\t|" << line << std::endl;
+    }
+  }
+
+  return rtn.str();
+}
 
 cmDebugServerConsole::cmDebugServerConsole(cmDebugger& debugger,
                                            cmConnection* conn)
@@ -62,23 +83,35 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
     std::stringstream ss;
     auto bps = Debugger.GetBreakpoints();
     for (unsigned i = 0; i < bps.size(); i++) {
-      ss << i << " break at " << bps[i].File << ":" << bps[i].Line
-         << std::endl;
+      ss << bps[i].Id << " \tbreakpoint \t" << bps[i].File << ":"
+         << bps[i].Line << std::endl;
+    }
+    auto wps = Debugger.GetWatchpoints();
+    for (unsigned i = 0; i < wps.size(); i++) {
+      ss << wps[i].Id << " \twatchpoint \t" << wps[i].Variable << " \t("
+         << cmWatchpoint::GetTypeAsString(wps[i].Type) << ")" << std::endl;
     }
     connection->WriteData(ss.str());
   } else if (request.find("clear") == 0) {
     auto space = request.find(' ');
     if (space == std::string::npos) {
-      auto bps = Debugger.GetBreakpoints();
-      for (unsigned i = 0; i < bps.size(); i++) {
-        Debugger.ClearBreakpoint(i);
-      }
-      connection->WriteData("Cleared all breakpoints\n");
+      Debugger.ClearAllBreakpoints();
+      Debugger.ClearAllWatchpoints();
+      connection->WriteData("Cleared all breakpoints and watchpoints\n");
     } else {
       auto clearWhat = stoi(request.substr(space));
-      Debugger.ClearBreakpoint(clearWhat);
-      connection->WriteData("Cleared breakpoint " + std::to_string(clearWhat) +
-                            "\n");
+
+      if (Debugger.ClearBreakpoint(clearWhat)) {
+        connection->WriteData("Cleared breakpoint " +
+                              std::to_string(clearWhat) + "\n");
+      } else if (Debugger.ClearWatchpoint(clearWhat)) {
+        connection->WriteData("Cleared watchpoint " +
+                              std::to_string(clearWhat) + "\n");
+      } else {
+        connection->WriteData(
+          "Could not find breakpoint or watchpoint with ID of " +
+          std::to_string(clearWhat) + "\n");
+      }
     }
   }
 
@@ -95,6 +128,15 @@ void cmDebugServerConsole::ProcessRequest(cmConnection* connection,
     ctx.Step();
   } else if (request == "s") {
     ctx.StepIn();
+  } else if (request.find("l") == 0) {
+    auto ctxLines = 10;
+    auto fileLines = getFileLines(ctx.CurrentLine().FilePath,
+                                  ctx.CurrentLine().Line, ctxLines);
+    connection->WriteData(fileLines + "\n");
+  } else if (request.find("open") == 0) {
+    auto shellCmd =
+      request.size() == 4 ? "" : (request.substr(strlen("open ")) + " ");
+    system((shellCmd + ctx.CurrentLine().FilePath).c_str());
   } else if (request == "bt") {
     auto currentLine = ctx.CurrentLine();
     connection->WriteData("Paused at " + currentLine.FilePath + ":" +
@@ -185,7 +227,7 @@ void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
                                         const std::string& newValue)
 {
   std::stringstream ss;
-  ss << "Variable '" << variable << "' is being set to '" << newValue << "' ("
+  ss << "Watchpoint '" << variable << "' hit -- '" << newValue << "' ("
      << cmVariableWatch::GetAccessAsString(access) << ")" << std::endl;
 
   for (auto& Connection : Connections) {
