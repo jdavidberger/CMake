@@ -12,6 +12,12 @@ static cmsys::SystemInformation info;
 #include "cm_jsoncpp_reader.h"
 #endif
 
+cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger)
+  : cmDebugServerJson(debugger,
+                      new cmStdIoConnection(new cmServerBufferStrategy()))
+{
+}
+
 cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger, cmConnection* conn)
   : cmDebugServer(debugger, conn)
 {

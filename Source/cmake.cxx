@@ -634,6 +634,8 @@ void cmake::SetupDebugger(const std::string& connection)
     cmDebugServer* server = CM_NULLPTR;
     if (connection == "stdin") {
       server = new cmDebugServerConsole(*this->Debugger);
+    } else if (connection == "json-stdin") {
+      server = new cmDebugServerJson(*this->Debugger);
     } else {
       server = new cmDebugServerJson(*this->Debugger, connection);
     }
