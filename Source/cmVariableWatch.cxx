@@ -88,8 +88,9 @@ bool cmVariableWatch::VariableAccessed(const std::string& variable,
   if (mit != this->WatchMap.end()) {
     const cmVariableWatch::VectorOfPairs* vp = &mit->second;
     cmVariableWatch::VectorOfPairs::const_iterator it;
-    for (it = vp->begin(); it != vp->end(); it++) {
-      (*it)->Method(variable, access_type, (*it)->ClientData, newValue, mf);
+    for (size_t i = 0; i < vp->size(); i++) {
+      auto& cbData = (*vp)[i];
+      cbData->Method(variable, access_type, cbData->ClientData, newValue, mf);
     }
     return true;
   }
