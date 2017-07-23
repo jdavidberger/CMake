@@ -110,6 +110,17 @@ void auto_signal_t::stop()
   }
 }
 
+auto_tcp_t::operator uv_stream_t*()
+{
+  return reinterpret_cast<uv_stream_t*>(handle);
+}
+
+int auto_tcp_t::init(uv_loop_t& loop, void* data)
+{
+  allocate(data);
+  return uv_tcp_init(&loop, handle);
+}
+
 int auto_pipe_t::init(uv_loop_t& loop, int ipc, void* data)
 {
   allocate(data);

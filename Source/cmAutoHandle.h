@@ -101,3 +101,9 @@ struct auto_pipe_t : public auto_handle_<uv_pipe_t>
   operator uv_stream_t*();
   int init(uv_loop_t& loop, int ipc, void* data = CM_NULLPTR);
 };
+
+struct auto_tcp_t : public auto_handle_<uv_tcp_t>
+{
+  operator uv_stream_t*();
+  virtual int init(uv_loop_t& loop, void* data = CM_NULLPTR);
+};
