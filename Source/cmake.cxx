@@ -27,6 +27,9 @@
 #include "cmWorkingDirectory.h"
 #include "cm_auto_ptr.hxx"
 #include "cm_sys_stat.h"
+#if defined(HAVE_DEBUG_SERVER)
+#include "cmDebugServerConsole.h"
+#endif
 #include "cmDebugger.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
@@ -95,7 +98,9 @@
 #endif
 
 #ifdef CMAKE_USE_ECLIPSE
+#include "cmDebugServer.h"
 #include "cmExtraEclipseCDT4Generator.h"
+
 #endif
 
 #if defined(__APPLE__)
@@ -108,16 +113,20 @@
 #include <sys/time.h>
 #endif
 
-#include "cmsys/FStream.hxx"
-#include "cmsys/Glob.hxx"
 #include "cmsys/RegularExpression.hxx"
 #include <algorithm>
+#include <sys/types.h>
+// include sys/stat.h after sys/types.h
+#include <sys/stat.h> // struct stat
+
+#include <cmsys/FStream.hxx>
+#include <cmsys/Glob.hxx>
+
 #include <iostream>
 #include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <utility>
 
 namespace {
 
@@ -612,6 +621,33 @@ bool cmake::FindPackage(const std::vector<std::string>& args)
   return packageFound;
 }
 
+#if defined(HAVE_DEBUG_SERVER)
+void cmake::SetupDebugger(const std::string& connection)
+{
+  if (this->Debugger) {
+      return;
+  }
+
+  this->Debugger = cmDebugger::Create(*this);
+
+  if (this->Debugger) {
+    cmDebugServer* server = CM_NULLPTR;
+    if (connection == "stdin") {
+      server = new cmDebugServerConsole(*this->Debugger);
+    } else {
+      std::cerr << "Currently only 'stdin' is supported for debugger "
+                   "connections; not starting starting the debugger"
+                << std::endl;
+    }
+
+    if (server) {
+      this->Debugger->AddListener(server);
+      server->StartServeThread();
+    }
+  }
+}
+#endif
+
 // Parse the args
 void cmake::SetArgs(const std::vector<std::string>& args,
                     bool directoriesSetBefore)
@@ -676,6 +712,11 @@ void cmake::SetArgs(const std::vector<std::string>& args,
       if (this->GraphVizFile.empty()) {
         cmSystemTools::Error("No file specified for --graphviz");
       }
+#if defined(HAVE_DEBUG_SERVER)
+    } else if (arg.find("--debugger=", 0) == 0) {
+      std::string connection = arg.substr(strlen("--debugger="));
+      SetupDebugger(connection);
+#endif
     } else if (arg.find("--debug-trycompile", 0) == 0) {
       std::cout << "debug trycompile on\n";
       this->DebugTryCompileOn();
@@ -771,6 +812,13 @@ void cmake::SetArgs(const std::vector<std::string>& args,
     this->SetHomeOutputDirectory(cmSystemTools::GetCurrentWorkingDirectory());
     this->SetHomeDirectory(cmSystemTools::GetCurrentWorkingDirectory());
   }
+
+#if defined(HAVE_DEBUG_SERVER)
+  auto connectionString = std::getenv("CMAKE_DEBUGGER");
+  if (connectionString && *connectionString) {
+    SetupDebugger(connectionString);
+  }
+#endif
 }
 
 void cmake::SetDirectoriesFromFile(const char* arg)

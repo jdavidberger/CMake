@@ -14,9 +14,9 @@ class cmDebugServer : public cmServerBase, public cmDebuggerListener
 public:
   cmDebugServer(cmDebugger& debugger, cmConnection* conn);
 
-  virtual ~cmDebugServer();
+  ~cmDebugServer() override;
 
-  virtual bool OnSignal(int signum) override;
+  bool OnSignal(int signum) override;
   void StartShutDown() override;
 
   virtual void Broadcast(const std::string& msg);

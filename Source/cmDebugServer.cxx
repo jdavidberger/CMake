@@ -36,8 +36,9 @@ void cmDebugServer::StartShutDown()
 
 void cmDebugServer::AsyncBroadcast(const std::string& msg)
 {
-  if(msg.size() == 0)
+  if(msg.size() == 0) {
       return;
+  }
   std::lock_guard<std::mutex> l(BroadcastQueueMutex);
   BroadcastQueue.push_back(msg);
   this->BroadcastQueueSignal.send();
