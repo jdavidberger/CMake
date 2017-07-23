@@ -128,6 +128,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstdlib>
 
 namespace {
 
@@ -637,6 +638,8 @@ void cmake::SetupDebugger(const std::string& connection)
       server = new cmDebugServerConsole(*this->Debugger);
     } else if (connection == "json-stdin") {
       server = new cmDebugServerJson(*this->Debugger);
+    } else if (connection[0] >= '0' && connection[0] <= '9') {
+      server = new cmDebugServerJson(*this->Debugger, std::stoi(connection));
     } else {
       server = new cmDebugServerJson(*this->Debugger, connection);
     }
