@@ -110,23 +110,30 @@ public:
     listeners.erase(listener);
   }
 
-  void SetState(State::t newState) { state = newState; }
+  void SetState(State::t newState)
+  {
+    bool notifyListeners = state != State::Unknown && state != newState;
+    state = newState;
+    if (!notifyListeners) {
+      return;
+    }
+
+    for (auto& l : listeners) {
+      l->OnChangeState();
+    }
+  }
 
   void PauseExecution()
   {
     breakPending = false;
     breakDepth = -1;
-    SetState(State::Paused);
-    for (auto& l : listeners) {
-      l->OnChangeState();
-    }
-
     continuePending = false;
-    cv.wait(Lock, [this] { return (bool)continuePending; });
-    SetState(State::Running);
-    for (auto& l : listeners) {
-      l->OnChangeState();
+    SetState(State::Paused);
+
+    if (!continuePending) {
+      cv.wait(Lock, [this] { return (bool)continuePending; });
     }
+    SetState(State::Running);
   }
 
   cmListFileContext CurrentLine() const override { return currentLocation; }
