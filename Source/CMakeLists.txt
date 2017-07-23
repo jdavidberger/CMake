@@ -160,6 +160,8 @@ set(SRCS
   cmCustomCommandGenerator.h
   cmDefinitions.cxx
   cmDefinitions.h
+  cmDebugger.cxx
+  cmDebugger.h
   cmDepends.cxx
   cmDepends.h
   cmDependsC.cxx

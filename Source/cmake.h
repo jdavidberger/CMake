@@ -27,6 +27,7 @@ class cmMakefile;
 class cmMessenger;
 class cmState;
 class cmVariableWatch;
+class cmDebugger;
 struct cmDocumentationEntry;
 
 /** \brief Represents a cmake invocation.
@@ -342,7 +343,7 @@ public:
   void SetWarnUnusedCli(bool b) { this->WarnUnusedCli = b; }
   bool GetCheckSystemVars() { return this->CheckSystemVars; }
   void SetCheckSystemVars(bool b) { this->CheckSystemVars = b; }
-
+  cmDebugger* GetDebugger() { return this->Debugger; }
   void MarkCliAsUsed(const std::string& variable);
 
   /** Get the list of configurations (in upper case) considered to be
@@ -501,6 +502,8 @@ private:
   cmMessenger* Messenger;
 
   std::vector<std::string> TraceOnlyThisSources;
+
+  cmDebugger* Debugger;
 
   void UpdateConversionPathTable();
 

@@ -17,6 +17,7 @@
 #include "cmCommandArgumentParserHelper.h"
 #include "cmCustomCommand.h"
 #include "cmCustomCommandLines.h"
+#include "cmDebugger.h"
 #include "cmExecutionStatus.h"
 #include "cmExpandedCommandArgument.h"
 #include "cmFileLockPool.h"
@@ -120,6 +121,11 @@ void cmMakefile::IssueMessage(cmake::MessageType t,
     }
   }
   this->GetCMakeInstance()->IssueMessage(t, text, this->GetBacktrace());
+  if ((t == cmake::FATAL_ERROR) || (t == cmake::INTERNAL_ERROR)) {
+    if (auto debugger = this->GetCMakeInstance()->GetDebugger()) {
+      debugger->ErrorHook(this->Backtrace.Top());
+    }
+  }
 }
 
 cmStringRange cmMakefile::GetIncludeDirectoriesEntries() const
@@ -275,6 +281,11 @@ bool cmMakefile::ExecuteCommand(const cmListFileFunction& lff,
       if (this->GetCMakeInstance()->GetTrace()) {
         this->PrintCommandTrace(lff);
       }
+
+      if (auto debugger = this->GetCMakeInstance()->GetDebugger()) {
+        debugger->PreRunHook(this->Backtrace.Top(), lff);
+      }
+
       // Try invoking the command.
       bool invokeSucceeded = pcmd->InvokeInitialPass(lff.Arguments, status);
       bool hadNestedError = status.GetNestedError();
