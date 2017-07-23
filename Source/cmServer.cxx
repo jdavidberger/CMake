@@ -56,10 +56,6 @@ cmServer::cmServer(cmConnection* conn, bool supportExperimental)
 
 cmServer::~cmServer()
 {
-  if (!this->Protocol) { // Server was never fully started!
-    return;
-  }
-
   for (cmServerProtocol* p : this->SupportedProtocols) {
     delete p;
   }
