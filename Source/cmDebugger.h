@@ -10,6 +10,7 @@
 class cmake;
 class cmDebugger;
 typedef size_t breakpoint_id;
+typedef size_t watchpoint_id;
 
 /***
  * Interface for receiving events from the debugger.
@@ -41,15 +42,41 @@ public:
   }
 };
 
+class cmWatchpoint
+{
+public:
+  enum WatchpointType
+  {
+    WATCHPOINT_NONE = 0,
+    WATCHPOINT_DEFINE = 1,
+    WATCHPOINT_WRITE = 2,
+    WATCHPOINT_READ = 4,
+    WATCHPOINT_UNDEFINED = 8,
+    WATCHPOINT_MODIFY =
+      WATCHPOINT_UNDEFINED | WATCHPOINT_WRITE | WATCHPOINT_DEFINE,
+    WATCHPOINT_ALL = WATCHPOINT_UNDEFINED | WATCHPOINT_READ |
+      WATCHPOINT_WRITE |
+      WATCHPOINT_DEFINE
+  };
+  static std::string GetTypeAsString(WatchpointType type);
+  watchpoint_id Id;
+  WatchpointType Type;
+  std::string Variable;
+
+  cmWatchpoint(watchpoint_id Id, WatchpointType Type,
+               const std::string& Variable);
+};
+
 class cmBreakpoint
 {
 public:
+  breakpoint_id Id;
   std::string File;
   size_t Line;
-  cmBreakpoint(const std::string& file = "", size_t line = 0);
-  operator bool() const;
-  bool matches(const cmListFileContext& ctx) const;
+  cmBreakpoint(breakpoint_id ID, const std::string& file = "",
+               size_t line = 0);
 
+  bool matches(const cmListFileContext& ctx) const;
   bool matches(const std::string& fileName, size_t line) const;
 };
 
@@ -93,6 +120,9 @@ class cmDebugger
 {
 private:
   friend class cmPauseContext;
+
+  // The following private functions are meant to be called only from
+  // cmPauseContext.
   virtual cmListFileBacktrace GetBacktrace() const = 0;
   virtual cmMakefile* GetMakefile() const = 0;
 
@@ -104,10 +134,10 @@ private:
 
 public:
   /***
-     * Factor constructor for a debugger instance.
-     * @param global Global used to query the running instance
-     * @return A pointer to a debugger engine.
-     */
+   * Factor constructor for a debugger instance.
+   * @param global Global used to query the running instance
+   * @return A pointer to a debugger engine.
+   */
   static cmDebugger* Create(cmake& global);
 
   struct State
@@ -119,7 +149,8 @@ public:
       Paused = 2
     };
   };
-  virtual const std::vector<cmBreakpoint>& GetBreakpoints() const = 0;
+  virtual std::vector<cmBreakpoint> GetBreakpoints() const = 0;
+  virtual std::vector<cmWatchpoint> GetWatchpoints() const = 0;
   virtual State::t CurrentState() const = 0;
 
   virtual ~cmDebugger() {}
@@ -139,26 +170,16 @@ public:
 
   virtual breakpoint_id SetBreakpoint(const std::string& fileName,
                                       size_t line) = 0;
-
-  enum WatchpointType
-  {
-    WATCHPOINT_DEFINE = 1,
-    WATCHPOINT_WRITE = 2,
-    WATCHPOINT_READ = 4,
-    WATCHPOINT_UNDEFINED = 8,
-    WATCHPOINT_MODIFY =
-      WATCHPOINT_UNDEFINED | WATCHPOINT_WRITE | WATCHPOINT_DEFINE,
-    WATCHPOINT_ALL = WATCHPOINT_UNDEFINED | WATCHPOINT_READ |
-      WATCHPOINT_WRITE |
-      WATCHPOINT_DEFINE
-  };
-
-  virtual breakpoint_id SetWatchpoint(
-    const std::string& expr,
-    WatchpointType watchpoint = WATCHPOINT_MODIFY) = 0;
-  virtual void ClearBreakpoint(breakpoint_id) = 0;
-  virtual void ClearBreakpoint(const std::string& fileName, size_t line) = 0;
+  virtual bool ClearBreakpoint(breakpoint_id id) = 0;
+  virtual size_t ClearBreakpoint(const std::string& fileName, size_t line) = 0;
   virtual void ClearAllBreakpoints() = 0;
+
+  virtual breakpoint_id SetWatchpoint(const std::string& expr,
+                                      cmWatchpoint::WatchpointType watchpoint =
+                                        cmWatchpoint::WATCHPOINT_MODIFY) = 0;
+  virtual bool ClearWatchpoint(watchpoint_id id) = 0;
+  virtual void ClearAllWatchpoints() = 0;
+
   virtual void Break() = 0;
 
   /***
