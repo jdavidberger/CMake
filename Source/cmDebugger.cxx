@@ -7,6 +7,7 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmake.h"
 #include <cmVariableWatch.h>
 #include <condition_variable>
+#include <map>
 #include <set>
 
 /**
@@ -37,11 +38,16 @@ class cmDebugger_impl : public cmDebugger
    */
   bool breakPending = true; // Break on connection
 
+  /**
+   * This flag is used to avoid spurious wakeups resuming the debugger
+   */
+  bool continuePending = false;
+
   /***
    * We run the breakpoints off of a separate mutex so that they can be set and
    * cleared while running
    */
-  std::mutex breakpointMutex;
+  mutable std::mutex breakpointMutex;
   std::vector<cmBreakpoint> breakpoints;
 
   /***
@@ -56,18 +62,20 @@ class cmDebugger_impl : public cmDebugger
   std::set<cmDebuggerListener*> listeners;
   cmListFileContext currentLocation;
 
-  struct Watchpoint
+  struct Watchpoint : public cmWatchpoint
   {
     typedef std::shared_ptr<Watchpoint> ptr;
     cmDebugger_impl* debugger = CM_NULLPTR;
-    WatchpointType watchpointType;
-    Watchpoint(cmDebugger_impl* _debugger, WatchpointType _watchpointType)
-      : debugger(_debugger)
-      , watchpointType(_watchpointType)
+    void* user_data = CM_NULLPTR;
+    Watchpoint(cmDebugger_impl* _debugger, watchpoint_id _Id,
+               WatchpointType _Type, const std::string& _Variable)
+      : cmWatchpoint(_Id, _Type, _Variable)
+      , debugger(_debugger)
     {
     }
   };
-  std::vector<std::weak_ptr<Watchpoint> > activeWatchpoints;
+  std::map<watchpoint_id, std::weak_ptr<Watchpoint> > activeWatchpoints;
+  size_t nextBreakId = 0;
 
 public:
   ~cmDebugger_impl() override
@@ -76,7 +84,7 @@ public:
       delete s;
     }
     for (auto& weakWatch : activeWatchpoints) {
-      if (auto watch = weakWatch.lock()) {
+      if (auto watch = weakWatch.second.lock()) {
         watch->debugger = CM_NULLPTR;
       }
     }
@@ -97,10 +105,6 @@ public:
   {
     listeners.erase(listener);
   }
-  const std::vector<cmBreakpoint>& GetBreakpoints() const override
-  {
-    return breakpoints;
-  }
 
   void PauseExecution()
   {
@@ -111,7 +115,8 @@ public:
       l->OnChangeState();
     }
 
-    cv.wait(Lock);
+    continuePending = false;
+    cv.wait(Lock, [this] { return continuePending; });
     state = State::Running;
     for (auto& l : listeners) {
       l->OnChangeState();
@@ -182,14 +187,6 @@ public:
     PauseExecution();
   }
 
-  breakpoint_id SetBreakpoint(const std::string& fileName,
-                              size_t line) override
-  {
-    std::lock_guard<std::mutex> l(breakpointMutex);
-    breakpoints.emplace_back(fileName, line);
-    return breakpoints.size() - 1;
-  }
-
   void OnWatchCallback(const std::string& variable, int access_type,
                        const char* newValue)
   {
@@ -224,7 +221,6 @@ public:
       return;
     }
 
-    bool matchesFilter = false;
     bool isRead =
       (access_type == cmVariableWatch::UNKNOWN_VARIABLE_READ_ACCESS) |
       (access_type == cmVariableWatch::VARIABLE_READ_ACCESS);
@@ -233,14 +229,11 @@ public:
       access_type == cmVariableWatch::UNKNOWN_VARIABLE_DEFINED_ACCESS;
     bool isUnset = access_type == cmVariableWatch::VARIABLE_REMOVED_ACCESS;
 
-    matchesFilter |=
-      isRead && watchpoint->watchpointType & cmDebugger::WATCHPOINT_READ;
-    matchesFilter |=
-      isWrite && watchpoint->watchpointType & cmDebugger::WATCHPOINT_WRITE;
-    matchesFilter |=
-      isDefined && watchpoint->watchpointType & cmDebugger::WATCHPOINT_DEFINE;
-    matchesFilter |=
-      isUnset && watchpoint->watchpointType & cmDebugger::WATCHPOINT_UNDEFINED;
+    bool matchesFilter =
+      (isRead && watchpoint->Type & cmWatchpoint::WATCHPOINT_READ) |
+      (isWrite && watchpoint->Type & cmWatchpoint::WATCHPOINT_WRITE) |
+      (isDefined && watchpoint->Type & cmWatchpoint::WATCHPOINT_DEFINE) |
+      (isUnset && watchpoint->Type & cmWatchpoint::WATCHPOINT_UNDEFINED);
 
     if (matchesFilter) {
       debugger->OnWatchCallback(variable, access_type, newValue);
@@ -250,8 +243,23 @@ public:
   {
     delete (Watchpoint::ptr*)client_data;
   }
-  breakpoint_id SetWatchpoint(const std::string& expr,
-                              WatchpointType watchpoint) override
+
+  std::vector<cmWatchpoint> GetWatchpoints() const override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    std::vector<cmWatchpoint> rtn;
+    rtn.reserve(activeWatchpoints.size());
+    for (auto& watchWeak : activeWatchpoints) {
+      if (auto watch = watchWeak.second.lock()) {
+        rtn.push_back(*watch);
+      }
+    }
+    return rtn;
+  }
+
+  watchpoint_id SetWatchpoint(
+    const std::string& expr,
+    cmWatchpoint::WatchpointType watchpointType) override
   {
     // The pointer to a smart pointer mechanism isn't pretty, but it should be
     // safe.The idea is that we store away the control block into
@@ -263,22 +271,98 @@ public:
 
     // NOTE: This means we are safe for either order, but is still isn't thread
     // safe -- you can hit a race condition if you delete the cmVariableWatch
-    // and the cmDebugger simultaneously in different threads.
-    auto watch = new Watchpoint::ptr(new Watchpoint(this, watchpoint));
-    activeWatchpoints.push_back(*watch);
+    // and the cmDebugger simultaneously in different threads. Since these
+    // objects are both dtored in the main thread, this shouldn't be an issue.
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    watchpoint_id nextId = nextBreakId++;
+    auto watch =
+      new Watchpoint::ptr(new Watchpoint(this, nextId, watchpointType, expr));
+
+    // Looks odd for sure but we need to store away user_data we hand off to
+    // AddWatch so we can remove the watch later on
+    (*watch)->user_data = watch;
+    activeWatchpoints[nextId] = *watch;
 
     this->CMakeInstance.GetVariableWatch()->AddWatch(expr, WatchMethodCB,
                                                      watch, WatchMethodDelete);
-    return 0;
+    return nextId;
   }
-
-  void ClearBreakpoint(breakpoint_id id) override
+  bool ClearWatchpoint(watchpoint_id id) override
   {
     std::lock_guard<std::mutex> l(breakpointMutex);
-    breakpoints.erase(breakpoints.begin() + id);
+    auto watchpointIt = activeWatchpoints.find(id);
+    auto originalSize = activeWatchpoints.size();
+    if (watchpointIt != activeWatchpoints.end()) {
+      if (auto watchpoint = watchpointIt->second.lock()) {
+        this->CMakeInstance.GetVariableWatch()->RemoveWatch(
+          watchpoint->Variable, WatchMethodCB);
+        activeWatchpoints.erase(id);
+      }
+    }
+
+    return originalSize != activeWatchpoints.size();
   }
 
-  void Continue() override { cv.notify_all(); }
+  void ClearAllWatchpoints() override
+  {
+    auto watchpoints = GetWatchpoints();
+    for (auto& watch : watchpoints) {
+      ClearWatchpoint(watch.Id);
+    }
+  }
+
+  std::vector<cmBreakpoint> GetBreakpoints() const override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    return breakpoints;
+  }
+
+  breakpoint_id SetBreakpoint(const std::string& fileName,
+                              size_t line) override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    auto nextId = nextBreakId++;
+    breakpoints.emplace_back(nextId, fileName, line);
+    return nextId;
+  }
+
+  bool ClearBreakpoint(breakpoint_id id) override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    auto predicate = [id](const cmBreakpoint& breakpoint) {
+      return breakpoint.Id == id;
+    };
+    auto originalSize = breakpoints.size();
+    breakpoints.erase(
+      std::remove_if(breakpoints.begin(), breakpoints.end(), predicate),
+      breakpoints.end());
+    return originalSize != breakpoints.size();
+  }
+
+  size_t ClearBreakpoint(const std::string& fileName, size_t line) override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    auto pred = [&](const cmBreakpoint br) {
+      return br.matches(fileName, line);
+    };
+    auto originalSize = breakpoints.size();
+    breakpoints.erase(
+      std::remove_if(breakpoints.begin(), breakpoints.end(), pred),
+      breakpoints.end());
+    return originalSize - breakpoints.size();
+  }
+
+  void ClearAllBreakpoints() override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    breakpoints.clear();
+  }
+
+  void Continue() override
+  {
+    continuePending = true;
+    cv.notify_all();
+  }
 
   void Break() override { breakPending = true; }
 
@@ -300,23 +384,6 @@ public:
     Continue();
   }
 
-  void ClearBreakpoint(const std::string& fileName, size_t line) override
-  {
-    std::lock_guard<std::mutex> l(breakpointMutex);
-    auto pred = [&](const cmBreakpoint br) {
-      return br.matches(fileName, line);
-    };
-    breakpoints.erase(
-      std::remove_if(breakpoints.begin(), breakpoints.end(), pred),
-      breakpoints.end());
-  }
-
-  void ClearAllBreakpoints() override
-  {
-    std::lock_guard<std::mutex> l(breakpointMutex);
-    breakpoints.clear();
-  }
-
   State::t CurrentState() const override { return this->state; }
 
   // Inherited via cmDebugger
@@ -333,14 +400,12 @@ cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
 {
 }
 
-cmBreakpoint::cmBreakpoint(const std::string& _file, size_t _line)
-  : File(_file)
-  , Line(_line)
+cmBreakpoint::cmBreakpoint(breakpoint_id id, const std::string& file,
+                           size_t line)
+  : Id(id)
+  , File(file)
+  , Line(line)
 {
-}
-cmBreakpoint::operator bool() const
-{
-  return !File.empty();
 }
 inline bool cmBreakpoint::matches(const cmListFileContext& ctx) const
 {
@@ -428,4 +493,55 @@ cmListFileContext cmPauseContext::CurrentLine() const
       "Attempt to access current line with invalid context");
   }
   return Debugger->CurrentLine();
+}
+
+cmWatchpoint::cmWatchpoint(watchpoint_id _Id,
+                           cmWatchpoint::WatchpointType _Type,
+                           const std::string& _Variable)
+  : Id(_Id)
+  , Type(_Type)
+  , Variable(_Variable)
+{
+}
+
+std::string cmWatchpoint::GetTypeAsString(cmWatchpoint::WatchpointType type)
+{
+  switch (type) {
+    case WATCHPOINT_NONE:
+      return "NONE";
+    case WATCHPOINT_ALL:
+      return "ALL";
+    case WATCHPOINT_MODIFY:
+      return "MODIFY";
+    case WATCHPOINT_DEFINE:
+      return "DEFINE";
+    case WATCHPOINT_READ:
+      return "READ";
+    case WATCHPOINT_UNDEFINED:
+      return "UNDEFINED";
+    case WATCHPOINT_WRITE:
+      return "WRITE";
+    default:
+      break;
+  }
+
+  std::string rtn;
+  for (auto field : { WATCHPOINT_WRITE, WATCHPOINT_UNDEFINED, WATCHPOINT_READ,
+                      WATCHPOINT_DEFINE, WATCHPOINT_MODIFY, WATCHPOINT_ALL }) {
+    if (field & type) {
+      rtn += GetTypeAsString(field) + ", ";
+    }
+  }
+
+  // If it doesn't match any of the bits in the field or none, what exactly was
+  // passed in?
+  assert(!rtn.empty());
+
+  // Remove last comma and space
+  if (!rtn.empty()) {
+    rtn.pop_back();
+    rtn.pop_back();
+  }
+
+  return rtn;
 }
