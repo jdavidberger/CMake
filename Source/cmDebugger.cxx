@@ -8,28 +8,67 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 #include <condition_variable>
 #include <set>
 
-class cmRemoteDebugger_impl : public cmDebugger
+/**
+ * Actual debugger implementation.
+ */
+class cmDebugger_impl : public cmDebugger
 {
   cmake& CMakeInstance;
   State::t state = State::Unknown;
-  std::mutex m;
-  std::condition_variable cv;
+
+  /***
+   * The main thread atomics used to control execution. We use a recursive
+   * mutex here so that we don't have to worry
+   * about juggling the mutex when we execute listener's callbacks. This allows
+   * users to get a pause context even
+   * within a callback.
+   *
+   * The long and short of it is that the mutex is almost always locked, and
+   * only goes into cv.wait when some break
+   * condition is hit.
+   */
+  std::recursive_mutex m;
+  std::condition_variable_any cv;
+  std::unique_lock<std::recursive_mutex> Lock;
+
+  /**
+   * This flag sets up the next instruction to go into the pause state.
+   */
   bool breakPending = true; // Break on connection
+
+  /***
+   * We run the breakpoints off of a separate mutex so that they can be set and
+   * cleared while running
+   */
+  std::mutex breakpointMutex;
   std::vector<cmBreakpoint> breakpoints;
 
+  /***
+   * When breakDepth isn't -1, we check the current stack size on execution and
+   * when the stack size is
+   * equal to that breakDepth we set breakPending. This makes step in / step
+   * out functionality divorced
+   * from understanding anything about the actual commands.
+   */
+  int32_t breakDepth = -1;
+
+  std::set<cmDebuggerListener*> listeners;
+  cmListFileContext currentLocation;
+
 public:
-  ~cmRemoteDebugger_impl() override
+  ~cmDebugger_impl() override
   {
     for (auto& s : listeners) {
       delete s;
     }
     listeners.clear();
   }
-  cmRemoteDebugger_impl(cmake& cmakeInstance)
+  cmDebugger_impl(cmake& cmakeInstance)
     : CMakeInstance(cmakeInstance)
+    , Lock(m)
   {
   }
-  std::set<cmDebuggerListener*> listeners;
+
   void AddListener(cmDebuggerListener* listener) override
   {
     listeners.insert(listener);
@@ -43,21 +82,23 @@ public:
   {
     return breakpoints;
   }
-  void PauseExecution(std::unique_lock<std::mutex>& lk)
+
+  void PauseExecution()
   {
     breakPending = false;
+    breakDepth = -1;
     state = State::Paused;
     for (auto& l : listeners) {
       l->OnChangeState();
     }
-    cv.wait(lk);
+
+    cv.wait(Lock);
     state = State::Running;
     for (auto& l : listeners) {
       l->OnChangeState();
     }
   }
 
-  cmListFileContext currentLocation;
   cmListFileContext CurrentLine() const override { return currentLocation; }
   cmListFileBacktrace GetBacktrace() const override
   {
@@ -82,26 +123,46 @@ public:
   {
     (void)line;
 
-    std::unique_lock<std::mutex> lk(m);
     state = State::Running;
     currentLocation = context;
-    if (breakPending) {
-      PauseExecution(lk);
+
+    // Step in / Step out logic. We have a target
+    // stack depth, and when we hit it, pause.
+    if (breakDepth != -1) {
+      auto currentDepth = GetBacktrace().Depth();
+      if (currentDepth == (size_t)breakDepth) {
+          breakPending = true;
+      }
     }
 
-    for (auto& bp : breakpoints) {
-      if (bp.matches(context)) {
-        PauseExecution(lk);
-        break;
+    // Breakpoint detection
+    {
+      std::lock_guard<std::mutex> l(breakpointMutex);
+      for (auto& bp : breakpoints) {
+        if (bp.matches(context)) {
+          breakPending = true;
+          break;
+        }
       }
+    }
+
+    // If a break is pending, act on it.
+    // Note that we
+    if (breakPending) {
+      PauseExecution();
     }
   }
 
-  void ErrorHook(const cmListFileContext& context) override { (void)context; }
+  void ErrorHook(const cmListFileContext& context) override
+  {
+    (void)context;
+    PauseExecution();
+  }
 
   breakpoint_id SetBreakpoint(const std::string& fileName,
                               size_t line) override
   {
+    std::lock_guard<std::mutex> l(breakpointMutex);
     breakpoints.emplace_back(fileName, line);
     return breakpoints.size() - 1;
   }
@@ -114,20 +175,18 @@ public:
 
   void ClearBreakpoint(breakpoint_id id) override
   {
-    if (breakpoints.size() > id) {
-      breakpoints[id].file = "";
-    }
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    breakpoints.erase(breakpoints.begin() + id);
   }
 
   void Continue() override { cv.notify_all(); }
 
   void Break() override { breakPending = true; }
 
-  void Step(size_t n = 1) override
+  void Step() override
   {
-    for (size_t i = 0; i < n; i++) {
-      StepIn();
-    }
+    breakDepth = (int32_t)GetBacktrace().Depth();
+    Continue();
   }
 
   void StepIn() override
@@ -136,22 +195,38 @@ public:
     Continue();
   }
 
-  void StepOut() override { Step(); }
-
-  std::string Print(const std::string& expr) override
+  void StepOut() override
   {
-    (void)expr;
-    return "";
+    breakDepth = (int32_t)(GetBacktrace().Depth()) - 1;
+    Continue();
   }
 
-  std::string PrintBacktrace() override { return ""; }
+  void ClearBreakpoint(const std::string& fileName, size_t line) override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    auto pred = [&](const cmBreakpoint br) {
+      return br.matches(fileName, line);
+    };
+    breakpoints.erase(
+      std::remove_if(breakpoints.begin(), breakpoints.end(), pred),
+      breakpoints.end());
+  }
+
+  void ClearAllBreakpoints() override
+  {
+    std::lock_guard<std::mutex> l(breakpointMutex);
+    breakpoints.clear();
+  }
 
   State::t CurrentState() const override { return this->state; }
+
+  // Inherited via cmDebugger
+  cmPauseContext PauseContext() override { return cmPauseContext(m, this); }
 };
 
 cmDebugger* cmDebugger::Create(cmake& global)
 {
-  return new cmRemoteDebugger_impl(global);
+  return new cmDebugger_impl(global);
 }
 
 cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
@@ -160,23 +235,98 @@ cmDebuggerListener::cmDebuggerListener(cmDebugger& debugger)
 }
 
 cmBreakpoint::cmBreakpoint(const std::string& _file, size_t _line)
-  : file(_file)
-  , line(_line)
+  : File(_file)
+  , Line(_line)
 {
 }
 cmBreakpoint::operator bool() const
 {
-  return !file.empty();
+  return !File.empty();
 }
 inline bool cmBreakpoint::matches(const cmListFileContext& ctx) const
 {
-  if (file.empty()) {
+  return matches(ctx.FilePath, ctx.Line);
+}
+
+bool cmBreakpoint::matches(const std::string& testFile, size_t testLine) const
+{
+  if (File.empty()) {
     return false;
   }
 
-  if (line != (size_t)ctx.Line && line != (size_t)-1) {
+  if (Line != testLine && Line != (size_t)-1) {
     return false;
   }
 
-  return ctx.FilePath.find(file) != std::string::npos;
+  return testFile.find(File) != std::string::npos;
+}
+
+cmPauseContext::cmPauseContext(std::recursive_mutex& m, cmDebugger* debugger)
+  : Debugger(debugger)
+  , Lock(m, std::try_to_lock)
+{
+}
+
+cmPauseContext::operator bool() const
+{
+  return Lock.owns_lock();
+}
+
+cmListFileBacktrace cmPauseContext::GetBacktrace() const
+{
+  if (!*this) {
+      throw std::runtime_error(
+              "Attempt to access backtrace with invalid context");
+  }
+  return Debugger->GetBacktrace();
+}
+
+cmMakefile* cmPauseContext::GetMakefile() const
+{
+  if (!*this) {
+      throw std::runtime_error(
+              "Attempt to access makefile with invalid context");
+  }
+  return Debugger->GetMakefile();
+}
+
+void cmPauseContext::Continue()
+{
+  if (!*this) {
+      throw std::runtime_error("Attempt to continue with invalid context");
+  }
+  Debugger->Continue();
+}
+
+void cmPauseContext::Step()
+{
+  if (!*this) {
+      throw std::runtime_error("Attempt to step with invalid context");
+  }
+  Debugger->Step();
+}
+
+void cmPauseContext::StepIn()
+{
+  if (!*this) {
+      throw std::runtime_error("Attempt to step inwith invalid context");
+  }
+  Debugger->StepIn();
+}
+
+void cmPauseContext::StepOut()
+{
+  if (!*this) {
+      throw std::runtime_error("Attempt to stepout with invalid context");
+  }
+  Debugger->StepOut();
+}
+
+cmListFileContext cmPauseContext::CurrentLine() const
+{
+  if (!*this) {
+      throw std::runtime_error(
+              "Attempt to access current line with invalid context");
+  }
+  return Debugger->CurrentLine();
 }
