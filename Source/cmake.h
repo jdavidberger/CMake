@@ -28,6 +28,7 @@ class cmMessenger;
 class cmState;
 class cmVariableWatch;
 class cmDebugger;
+class cmDebugServer;
 struct cmDocumentationEntry;
 
 /** \brief Represents a cmake invocation.
@@ -250,6 +251,12 @@ public:
    */
   int GetSystemInformation(std::vector<std::string>&);
 
+#if defined(HAVE_DEBUG_SERVER)
+  ///! Set up the internal debugger with the given connection string
+  void SetupDebugger(const std::string& connection);
+  void SetupDebugger(cmDebugServer* server);
+#endif
+
   ///! Parse command line arguments
   void SetArgs(const std::vector<std::string>&,
                bool directoriesSetBefore = false);
@@ -344,6 +351,7 @@ public:
   bool GetCheckSystemVars() { return this->CheckSystemVars; }
   void SetCheckSystemVars(bool b) { this->CheckSystemVars = b; }
   cmDebugger* GetDebugger() { return this->Debugger; }
+  void SetDebugger(cmDebugger* debugger) { this->Debugger = debugger; }
   void MarkCliAsUsed(const std::string& variable);
 
   /** Get the list of configurations (in upper case) considered to be
