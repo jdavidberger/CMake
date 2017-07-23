@@ -7,6 +7,7 @@
 
 #include "cm_uv.h"
 
+#include "cmAutoHandle.h"
 #include <string>
 
 class cmPipeConnection : public cmEventBasedConnection
@@ -23,6 +24,6 @@ public:
 
 private:
   const std::string PipeName;
-  uv_pipe_t* ServerPipe = nullptr;
-  uv_pipe_t* ClientPipe = nullptr;
+  auto_pipe_t ServerPipe;
+  auto_pipe_t ClientPipe;
 };
