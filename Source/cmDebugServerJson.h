@@ -31,11 +31,19 @@ public:
   cmDebugServerJson(cmDebugger& debugger, const std::string& pipe);
 
   /***
-   * General purpose constructor. It is expected that the buffering strategy
-   * only ever gives valid JSON objects.
-   * @param debugger The debugger to attach to
-   * @param conn Any valid connection
-   */
+ * Starts a json server using a socket with a json connection strategy
+ *
+ * @param debugger The debugger to attach to
+ * @param pipe The named pipe to use
+ */
+  cmDebugServerJson(cmDebugger& debugger, int port);
+
+  /***
+ * General purpose constructor. It is expected that the buffering strategy
+ * only ever gives valid JSON objects.
+ * @param debugger The debugger to attach to
+ * @param conn Any valid connection
+ */
   cmDebugServerJson(cmDebugger& debugger, cmConnection* conn);
 
   ~cmDebugServerJson() override { Close(); }

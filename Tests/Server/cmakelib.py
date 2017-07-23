@@ -42,8 +42,9 @@ filterPacket = lambda x: x
 
 STDIN = 0
 PIPE = 1
+TCP = 2
 
-communicationMethods = [STDIN]
+communicationMethods = [STDIN, TCP]
 
 if hasattr(socket, 'AF_UNIX'):
   communicationMethods.append(PIPE)
@@ -136,6 +137,16 @@ def attachPipe(cmakeCommand, pipeName):
   cmakeCommand.inPipe = sock
   cmakeCommand.write = cmakeCommand.inPipe.sendall
 
+def attachTcp(cmakeCommand, port):
+  time.sleep(1)
+  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  sock.connect(("localhost", port))
+  global serverTag
+  serverTag = "SERVER(TCP)"
+  cmakeCommand.outPipe = sock.makefile()
+  cmakeCommand.inPipe = sock
+  cmakeCommand.write = cmakeCommand.inPipe.sendall
+
 def initDebuggerProc(cmakeCommand, buildDir, sourceDir, comm):
   if os.path.exists(buildDir):
     shutil.rmtree(buildDir)
@@ -146,6 +157,10 @@ def initDebuggerProc(cmakeCommand, buildDir, sourceDir, comm):
     cmakeCommand = subprocess.Popen([cmakeCommand, "--debugger=" + pipeName, sourceDir],
                                     cwd=buildDir)
     attachPipe(cmakeCommand, pipeName)
+  elif comm == TCP:
+    cmakeCommand = subprocess.Popen([cmakeCommand, "--debugger=12345", sourceDir],
+                                    cwd=buildDir)
+    attachTcp(cmakeCommand, 12345)
   else:
     cmakeCommand = subprocess.Popen([cmakeCommand, "--debugger=json-stdin", sourceDir],
                                     stdin=subprocess.PIPE,
@@ -163,6 +178,8 @@ def initServerProc(cmakeCommand, comm):
     pipeName = getPipeName()
     cmakeCommand = subprocess.Popen([cmakeCommand, "-E", "server", "--experimental", "--pipe=" + pipeName])
     attachPipe(cmakeCommand, pipeName)
+  elif comm == TCP:
+    return None
   else:
     cmakeCommand = subprocess.Popen([cmakeCommand, "-E", "server", "--experimental", "--debug"],
                                     stdin=subprocess.PIPE,

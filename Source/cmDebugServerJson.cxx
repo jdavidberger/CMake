@@ -2,7 +2,7 @@
 file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmDebugServerJson.h"
 #include "cmMakefile.h"
-
+#include "cmTcpIpConnection.h"
 #include "cmsys/SystemInformation.hxx"
 
 static cmsys::SystemInformation info;
@@ -15,6 +15,12 @@ static cmsys::SystemInformation info;
 cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger)
   : cmDebugServerJson(debugger,
                       new cmStdIoConnection(new cmServerBufferStrategy()))
+{
+}
+
+cmDebugServerJson::cmDebugServerJson(cmDebugger& debugger, int port)
+  : cmDebugServerJson(
+      debugger, new cmTcpIpConnection(port, new cmServerBufferStrategy()))
 {
 }
 
