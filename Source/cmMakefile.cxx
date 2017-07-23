@@ -303,6 +303,14 @@ bool cmMakefile::ExecuteCommand(const cmListFileFunction& lff,
         // use the command
         this->FinalPassCommands.push_back(pcmd.release());
       }
+
+      // If this is true here, it means the command set the fatal error flag;
+      // alert the debugger
+      if (cmSystemTools::GetFatalErrorOccured()) {
+        if (auto debugger = this->GetCMakeInstance()->GetDebugger()) {
+          debugger->ErrorHook(this->Backtrace.Top());
+        }
+      }
     }
   } else {
     if (!cmSystemTools::GetFatalErrorOccured()) {
