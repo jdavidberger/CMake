@@ -1,5 +1,6 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
+#define NOMINMAX
 #include "cmake.h"
 
 #include "cmAlgorithms.h"
@@ -26,6 +27,7 @@
 #include "cmWorkingDirectory.h"
 #include "cm_auto_ptr.hxx"
 #include "cm_sys_stat.h"
+#include "cmDebugger.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include "cm_jsoncpp_writer.h"
@@ -162,7 +164,7 @@ cmake::cmake(Role role)
     }
   }
 #endif
-
+  this->Debugger = CM_NULLPTR;
   this->GlobalGenerator = CM_NULLPTR;
   this->ProgressCallback = CM_NULLPTR;
   this->ProgressCallbackClientData = CM_NULLPTR;
@@ -218,6 +220,7 @@ cmake::~cmake()
     this->GlobalGenerator = CM_NULLPTR;
   }
   cmDeleteAll(this->Generators);
+  delete this->Debugger;
 #ifdef CMAKE_BUILD_WITH_CMAKE
   delete this->VariableWatch;
 #endif
