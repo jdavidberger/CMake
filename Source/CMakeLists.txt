@@ -1028,6 +1028,17 @@ if(CMake_ENABLE_SERVER_MODE)
   target_link_libraries(cmake CMakeServerLib)
 endif()
 
+if(CMake_ENABLE_DEBUG_SERVER)
+  add_library(CMakeDebugServerLib
+    cmDebugServer.cxx cmDebugServer.h
+    )
+  target_link_libraries(CMakeDebugServerLib CMakeLib CMakeServerLib)
+  set_property(SOURCE cmake.cxx APPEND PROPERTY COMPILE_DEFINITIONS HAVE_DEBUG_SERVER=1)
+
+  target_link_libraries(CMakeLib CMakeDebugServerLib)
+  target_link_libraries(cmake CMakeDebugServerLib)
+endif()
+
 # Build CTest executable
 add_executable(ctest ctest.cxx ${MANIFEST_FILE})
 list(APPEND _tools ctest)
