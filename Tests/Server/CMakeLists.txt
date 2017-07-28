@@ -16,7 +16,7 @@ macro(do_test bsname file type)
     )
 
   if (NOT test_result EQUAL 0)
-    message(FATAL_ERROR "TEST FAILED")
+    message(FATAL_ERROR "TEST FAILED: Exit code ${test_result}")
   endif()
 endmacro()
 

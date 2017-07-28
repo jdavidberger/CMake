@@ -18,7 +18,7 @@ if os.path.exists(buildDir):
     shutil.rmtree(buildDir)
 
 filterBase = sourceDir
-proc = cmakelib.initDebuggerProc(cmakeCommand, buildDir, sourceDir + "/buildsystem1")
+
 
 def filterPacket(msg):
     # We attach PID of the process as a mechanism
@@ -44,22 +44,25 @@ cmakelib.filterPacket = filterPacket
 with open(testFile) as f:
     testData = json.loads(f.read())
 
-for obj in testData:
-    if cmakelib.handleBasicMessage(proc, obj, debug):
-        pass
-    elif 'waitForPause' in obj:
-        print("WAIT_FOR_PAUSE:")
-        while True:
-            packet = cmakelib.waitForRawMessage(proc)
-            if packet is None:
-                print("Connection closed while waiting for pause")
-                sys.exit(-1)
-            if 'State' in packet and packet['State'] == "Paused":
-                break
-    else:
-        print("Unknown command:", json.dumps(obj))
-        sys.exit(2)
+for communicationMethod in cmakelib.communicationMethods:
+    proc = cmakelib.initDebuggerProc(cmakeCommand, buildDir, sourceDir + "/buildsystem1", communicationMethod)
 
-print("Completed")
+    for obj in testData:
+        if cmakelib.handleBasicMessage(proc, obj, debug):
+            pass
+        elif 'waitForPause' in obj:
+            print("WAIT_FOR_PAUSE:")
+            while True:
+                packet = cmakelib.waitForRawMessage(proc)
+                if packet is None:
+                    print("Connection closed while waiting for pause")
+                    sys.exit(-1)
+                if 'State' in packet and packet['State'] == "Paused":
+                    break
+        else:
+            print("Unknown command:", json.dumps(obj))
+            sys.exit(2)
 
-cmakelib.shutdownProc(proc)
+    print("Completed")
+
+    cmakelib.shutdownProc(proc)
