@@ -207,7 +207,7 @@ void cmDebugServerConsole::printPrompt(cmConnection* connection)
 void cmDebugServerConsole::OnChangeState()
 {
   cmDebuggerListener::OnChangeState();
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+  uv_rwlock_rdlock(&ConnectionsMutex);
   for (auto& Connection : Connections) {
     switch (Debugger.CurrentState()) {
       case cmDebugger::State::Running:
@@ -231,17 +231,18 @@ void cmDebugServerConsole::OnChangeState()
         break;
     }
   }
+  uv_rwlock_rdunlock(&ConnectionsMutex);
 }
 
 void cmDebugServerConsole::OnBreakpoint(breakpoint_id breakpoint)
 {
   std::stringstream ss;
   ss << "# Breakpoint " << breakpoint << " hit" << std::endl;
-
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+  uv_rwlock_rdlock(&ConnectionsMutex);
   for (auto& Connection : Connections) {
     Connection->WriteData(ss.str());
   }
+  uv_rwlock_rdunlock(&ConnectionsMutex);
 }
 
 void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
@@ -252,8 +253,9 @@ void cmDebugServerConsole::OnWatchpoint(const std::string& variable,
   ss << "Watchpoint '" << variable << "' hit -- '" << newValue << "' ("
      << cmVariableWatch::GetAccessAsString(access) << ")" << std::endl;
 
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+  uv_rwlock_rdlock(&ConnectionsMutex);
   for (auto& Connection : Connections) {
     Connection->WriteData(ss.str());
   }
+  uv_rwlock_rdunlock(&ConnectionsMutex);
 }
