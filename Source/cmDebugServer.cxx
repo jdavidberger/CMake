@@ -44,12 +44,13 @@ void cmDebugServer::AsyncBroadcast(const std::string& msg)
 
 void cmDebugServer::Broadcast(const std::string& msg)
 {
-  std::lock_guard<std::recursive_mutex> l(ConnectionsMutex);
+  uv_rwlock_rdlock(&ConnectionsMutex);
   for (auto& connection : Connections) {
     if (connection->IsOpen()) {
       connection->WriteData(msg);
     }
   }
+  uv_rwlock_rdunlock(&ConnectionsMutex);
 }
 
 void cmDebugServer::ProcessBroadcastQueue()
